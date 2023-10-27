@@ -1,0 +1,2 @@
+[env]
+DOC_STORE_URL = { value = "documents", relative = true }
