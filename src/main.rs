@@ -1,31 +1,14 @@
 use std::io::Write;
+use uuid::Uuid;
 
 use anyhow::Context;
 //use serde::Deserialize;
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, FromRow, Sqlite, SqlitePool};
 use std::convert::{From, TryFrom};
+use std::path::PathBuf;
 
 const DB_URL: &str = "sqlite://odinsource.db";
-
-#[derive(Clone, Debug)]
-enum Mode {
-    AddTag,
-    AddDoc,
-    GetDoc,
-    GetTags,
-}
-
-impl std::convert::From<&str> for Mode {
-    fn from(value: &str) -> Self {
-        match value {
-            "addtag" => Self::AddTag,
-            "adddoc" => Self::AddDoc,
-            "gettags" => Self::GetTags,
-            _ => Self::GetDoc,
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 struct TagInputList(Vec<String>);
@@ -86,86 +69,99 @@ impl TagInputList {
     }
 }
 
-#[derive(Clone, Debug)]
-enum Action {
-    Add,
-    Delete,
-    Modify,
+#[derive(Parser, Debug)]
+struct Cli {
+    #[command(subcommand)]
+    entity_type: EntityType,
+}
+
+#[derive(Debug, Subcommand)]
+enum EntityType {
+    Tag(TagCmd),
+    #[command(name = "doc")]
+    Document(DocCmd),
+}
+
+#[derive(Debug, Args)]
+struct TagCmd {
+    #[command(subcommand)]
+    command: TagSubCmd,
+}
+
+#[derive(Debug, Subcommand)]
+enum TagSubCmd {
+    Add(AddTag),
+    Modify(ModifyTag),
+    Delete(DeleteTag),
     List,
 }
 
-impl From<&str> for Action {
-    fn from(value: &str) -> Self {
-        return match value {
-            "add" => Action::Add,
-            "delete" => Action::Delete,
-            "modify" => Action::Modify,
-            "list" => Action::List,
-            _ => Action::List,
-        };
-    }
+#[derive(Debug, Args)]
+pub struct AddTag {
+    name: String,
 }
 
-#[derive(Clone, Debug)]
-enum ActionTarget {
-    Tag,
-    Document,
-    Error,
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct ModifyTag {
+    #[arg(long)]
+    id: u16,
+    #[arg(long)]
+    name: String,
 }
 
-impl From<&str> for ActionTarget {
-    fn from(value: &str) -> Self {
-        return match value {
-            "t" | "tag" => ActionTarget::Tag,
-            "d" | "doc" | "document" => ActionTarget::Document,
-            _ => ActionTarget::Error,
-        };
-    }
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct DeleteTag {
+    #[arg(long)]
+    id: u16,
+    #[arg(long)]
+    name: String,
 }
 
-#[derive(Parser, Debug)]
-struct Arguments {
-    //action: Action,
-    //tag: ActionTarget,
-    #[clap(long = "list-tags", action = ArgAction::SetTrue)]
-    list_tags: bool,
-    #[clap(long = "add-tags")]
-    add_tags: Option<TagInputList>,
-    #[clap(long = "delete-tags")]
-    delete_tags: Option<TagInputList>,
-    #[clap(long = "list-docs", action = ArgAction::SetTrue)]
-    list_docs: bool,
-    #[clap(long = "add-doc")]
-    add_doc: Option<String>,
-    #[clap(long = "delete-doc")]
-    delete_doc: Option<String>,
-    #[clap(long = "delete-doc-id")]
-    delete_doc_id: Option<u16>,
+#[derive(Debug, Args)]
+struct DocCmd {
+    #[command(subcommand)]
+    command: DocSubCmd,
 }
 
-impl Default for Arguments {
-    fn default() -> Self {
-        return Self {
-            //action: Action::List,
-            list_tags: false,
-            add_tags: None,
-            delete_tags: None,
-            list_docs: false,
-            add_doc: None,
-            delete_doc: None,
-            delete_doc_id: None,
-        };
-    }
+#[derive(Debug, Subcommand)]
+enum DocSubCmd {
+    Add(AddDoc),
+    Modify(ModifyDoc),
+    Delete(DeleteDoc),
+    List,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct AddDoc {
+    #[arg(long)]
+    toml: Option<PathBuf>,
+    #[arg(long)]
+    path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyDoc {
+    title: String,
+}
+
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct DeleteDoc {
+    #[arg(long)]
+    id: Option<u16>,
+    #[arg(long)]
+    title: Option<String>,
+}
+
+async fn setup() -> anyhow::Result<SqlitePool> {
     // Ensure the document storage directory exists
     let doc_store_url = std::path::PathBuf::from(std::env!("DOC_STORE_URL"));
     if !doc_store_url.exists() {
         std::fs::create_dir(doc_store_url)?;
     }
-
     // Ensure the database exists
     if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
         println!("Creating database {}", DB_URL);
@@ -173,68 +169,82 @@ async fn main() -> anyhow::Result<()> {
             Ok(_) => println!("Database creation successful."),
             Err(e) => panic!("error: {}", e),
         }
+        let db = SqlitePool::connect(DB_URL).await?;
+        let _doc_table_result = initialize_doc_table(&db).await?;
+        let _tag_table_result = initialize_tag_table(&db).await?;
+        return Ok(db);
     } else {
-        println!("Database already exists");
-    }
-
-    let db = SqlitePool::connect(DB_URL).await.unwrap();
-
-    let doc_table_result = initialize_doc_table(&db).await?;
-    println!("Create documents table result: {:?}", doc_table_result);
-
-    let tag_table_result = initialize_tag_table(&db).await?;
-    println!("Create tags table result: {:?}", tag_table_result);
-
-    let args = Arguments::parse();
-    dbg!(&args);
-    if let Some(tags) = &args.add_tags {
-        tags.add_to_db(&db).await.context("add_tags")?;
-        let tags: Vec<Tag> = get_tags(&db).await?;
-        println!("Tags:\n{:?}", tags);
+        return Ok(SqlitePool::connect(DB_URL).await?);
     };
+}
 
-    if let Some(tags) = &args.delete_tags {
-        tags.delete_from_db(&db).await.context("delete_tags")?;
-        //delete_tags(&db, &args.delete_tags.0)
-        //    .await
-        //    .context("delete_tags")?;
-        let tags: Vec<Tag> = get_tags(&db).await?;
-        println!("Tags:\n{:?}", tags);
-    };
-
-    if let Some(path_str) = &args.add_doc {
-        let path = std::path::PathBuf::from(path_str);
-        if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
-            // TODO: copy file to doc_store_url
-            let new_doc = get_doc_info().await?;
-            add_doc(&db, &new_doc).await?;
-            let docs: Vec<Document> = get_docs(&db).await?;
-            println!("Docs:\n{:?}", docs);
-        } else {
-            return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
-        }
-    };
-
-    if let Some(title) = &args.delete_doc {
-        delete_doc(&db, title.to_lowercase()).await?;
-        let docs: Vec<Document> = get_docs(&db).await?;
-        println!("Docs:\n{:?}", docs);
-    };
-
-    if let Some(id) = args.delete_doc_id {
-        delete_doc_id(&db, id).await?;
-        let docs: Vec<Document> = get_docs(&db).await?;
-        println!("Docs:\n{:?}", docs);
-    }
-
-    if args.list_tags {
-        let tags: Vec<Tag> = get_tags(&db).await?;
-        println!("Tags:\n{:?}", tags);
-    }
-
-    if args.list_docs {
-        let docs: Vec<Document> = get_docs(&db).await?;
-        println!("Docs:\n{:?}", docs);
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let install_root = std::env::var("CARGO_INSTALL_ROOT");
+    println!("INSTALL: {}", install_root?);
+    let db = setup().await?;
+    let args = Cli::parse();
+    match args.entity_type {
+        EntityType::Tag(cmd) => match cmd.command {
+            TagSubCmd::Add(cmd) => {
+                let tags = TagInputList::from(cmd.name.as_str());
+                tags.add_to_db(&db).await.context("add tag(s)")?;
+                let tags: Vec<Tag> = get_tags(&db).await?;
+                println!("Tags:\n{:#?}", tags);
+            }
+            TagSubCmd::Modify(cmd) => unimplemented!(),
+            TagSubCmd::Delete(cmd) => {
+                let tags = TagInputList::from(cmd.name.as_str());
+                tags.delete_from_db(&db).await.context("delete_tags")?;
+                let tags: Vec<Tag> = get_tags(&db).await?;
+                println!("Tags:\n{:?}", tags);
+            }
+            TagSubCmd::List => {
+                let tags: Vec<Tag> = get_tags(&db).await?;
+                println!("Tags:\n{:#?}", tags);
+            }
+        },
+        EntityType::Document(cmd) => match cmd.command {
+            DocSubCmd::Add(cmd) => {
+                if let Some(path) = cmd.path {
+                    if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
+                        let mut new_doc = get_doc_info().await?;
+                        store_file(path, &mut new_doc).await?;
+                        add_doc(&db, &new_doc).await?;
+                        let docs: Vec<Document> = get_docs(&db).await?;
+                        println!("Docs:\n{:?}", docs);
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
+                    }
+                } else if let Some(path) = cmd.toml {
+                    unimplemented!()
+                    //if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
+                    //    // TODO: copy file to doc_store_url
+                    //    let new_doc = get_doc_info().await?;
+                    //    add_doc(&db, &new_doc).await?;
+                    //    let docs: Vec<Document> = get_docs(&db).await?;
+                    //    println!("Docs:\n{:?}", docs);
+                    //} else {
+                    //    return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
+                    //}
+                }
+            }
+            DocSubCmd::Modify(cmd) => unimplemented!(),
+            DocSubCmd::Delete(cmd) => {
+                if let Some(id) = cmd.id {
+                    delete_doc_id(&db, id).await?;
+                }
+                if let Some(title) = cmd.title {
+                    delete_doc(&db, title).await?;
+                }
+                let docs: Vec<Document> = get_docs(&db).await?;
+                println!("Docs:\n{:?}", docs);
+            }
+            DocSubCmd::List => {
+                let docs: Vec<Document> = get_docs(&db).await?;
+                println!("Docs:\n{:#?}", docs);
+            }
+        },
     }
     return Ok(());
 }
@@ -251,7 +261,7 @@ async fn initialize_doc_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryRe
             year_published INTEGER NOT NULL,
             publication TEXT NOT NULL,
             volume INTEGER DEFAULT 0,
-            filename TEXT DEFAULT 'EMPTY',
+            uuid TEXT NOT NULL,
             tags TEXT DEFAULT ''
         );
         "#,
@@ -288,7 +298,7 @@ async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<Tag>> {
 async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
     return Ok(sqlx::query_as::<_, Document>(
         r#"
-        SELECT id, title, author_firstname, author_lastname, year_published, publication, volume, filename, tags
+        SELECT id, title, author_firstname, author_lastname, year_published, publication, volume, uuid, tags
         FROM documents
         "#,
     )
@@ -306,9 +316,10 @@ async fn add_doc(pool: &SqlitePool, doc: &Document) -> anyhow::Result<()> {
             year_published,
             publication,
             volume,
+            uuid,
             tags
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         "#,
     )
     .bind(&doc.title)
@@ -317,6 +328,7 @@ async fn add_doc(pool: &SqlitePool, doc: &Document) -> anyhow::Result<()> {
     .bind(doc.year)
     .bind(&doc.publication)
     .bind(doc.volume)
+    .bind(&doc.uuid)
     .bind(&doc.tags)
     .execute(pool)
     .await?;
@@ -401,7 +413,7 @@ async fn get_doc_info() -> anyhow::Result<Document> {
     let tags: String = if buf == "" {
         String::new()
     } else {
-        TagInputList::from(buf.trim_matches('"')).0.join(",")
+        TagInputList::from(buf.trim().trim_matches('"')).0.join(",")
     };
 
     let doc = Document {
@@ -413,6 +425,7 @@ async fn get_doc_info() -> anyhow::Result<Document> {
         year,
         volume,
         tags,
+        uuid: String::new(),
     };
 
     println!("Document Entry: {:?}", doc);
@@ -420,13 +433,13 @@ async fn get_doc_info() -> anyhow::Result<Document> {
     std::io::stdout().flush()?;
     let mut buf = String::new();
     std::io::stdin().read_line(&mut buf)?;
-    match buf.as_str() {
+    match buf.trim() {
         "y" | "yes" => return Ok(doc),
         _ => return Err(anyhow::anyhow!("Entry cancelled.")),
     }
 }
 
-#[derive(FromRow, Debug)]
+#[derive(FromRow, Debug, Hash)]
 struct Document {
     pub id: u32,
     pub title: String,
@@ -439,10 +452,28 @@ struct Document {
     pub publication: String,
     pub volume: u16,
     pub tags: String,
+    pub uuid: String,
 }
 
 #[derive(FromRow, Debug)]
 struct Tag {
     pub id: u32,
     pub value: String,
+}
+
+async fn store_file(path: PathBuf, doc: &mut Document) -> anyhow::Result<()> {
+    let uuid = Uuid::new_v4().to_string();
+    doc.uuid = uuid.clone();
+    let asset_path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(uuid + ".pdf");
+    std::fs::copy(path.clone(), asset_path.clone())?;
+    println!("Document {:?} stored as {:?}", path, asset_path);
+    return Ok(());
+}
+
+async fn delete_file(doc: &Document) -> anyhow::Result<()> {
+    let fname = doc.uuid.clone() + ".pdf";
+    let asset_path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(fname);
+    std::fs::remove_file(asset_path.clone())?;
+    println!("Document {:?} deleted.", asset_path);
+    return Ok(());
 }
