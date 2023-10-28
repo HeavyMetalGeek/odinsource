@@ -1,3 +1,4 @@
 /target
 /documents
 *.db*
+test.toml

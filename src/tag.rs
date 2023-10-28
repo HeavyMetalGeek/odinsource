@@ -6,6 +6,54 @@ pub struct Tag {
     pub value: String,
 }
 
+impl Tag {
+    pub fn from_value(value: &str) -> Self {
+        return Self {
+            id: 0,
+            value: value.to_string(),
+        };
+    }
+
+    pub async fn from_value_in_db(value: String, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
+        let mut tag = sqlx::query_as::<_, Self>(
+            r#"
+            SELECT * FROM tags
+            WHERE value=?1
+            "#,
+        )
+        .bind(&value)
+        .fetch_all(pool)
+        .await?;
+
+        return Ok(tag.pop());
+    }
+
+    pub async fn add_to_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        let Tag { value, .. } = self;
+        let value = value.to_lowercase();
+
+        match Tag::from_value_in_db(value.clone(), pool).await {
+            Ok(doc_opt) => {
+                if let None = doc_opt {
+                    // Add entry to database
+                    sqlx::query(
+                        r#"
+                        INSERT INTO tags (value)
+                        VALUES (?1)
+                        "#,
+                    )
+                    .bind(value)
+                    .execute(pool)
+                    .await?;
+                }
+            }
+            Err(e) => return Err(e),
+        }
+
+        return Ok(());
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TagInputList(Vec<String>);
 
@@ -33,7 +81,11 @@ impl std::convert::From<&str> for TagInputList {
 }
 
 impl TagInputList {
-    pub fn tags(&self) -> &Vec<String> {
+    pub fn as_tags(self) -> Vec<Tag> {
+        return self.0.into_iter().map(|t| Tag::from_value(&t)).collect();
+    }
+
+    pub fn tag_values(&self) -> &Vec<String> {
         return &self.0;
     }
 

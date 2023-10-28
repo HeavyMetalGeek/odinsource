@@ -6,15 +6,11 @@ use cli::*;
 use document::*;
 use tag::*;
 
-use std::io::Write;
-use uuid::Uuid;
-
 use anyhow::Context;
 //use serde::Deserialize;
 use clap::Parser;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Sqlite, SqlitePool};
 use std::convert::From;
-use std::path::PathBuf;
 
 const DB_URL: &str = "sqlite://odinsource.db";
 
@@ -35,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
                 let tags = TagInputList::from(cmd.name.as_str());
                 tags.delete_from_db(&db).await.context("delete_tags")?;
                 let tags: Vec<Tag> = get_tags(&db).await?;
-                println!("Tags:\n{:?}", tags);
+                println!("Tags:\n{:#?}", tags);
             }
             TagSubCmd::List => {
                 let tags: Vec<Tag> = get_tags(&db).await?;
@@ -48,21 +44,20 @@ async fn main() -> anyhow::Result<()> {
                     if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
                         Document::from_prompts().await?.add_to_db(path, &db).await?;
                         let docs: Vec<Document> = get_docs(&db).await?;
-                        println!("Docs:\n{:?}", docs);
+                        println!("Docs:\n{:#?}", docs);
                     } else {
                         return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
                     }
                 } else if let Some(path) = cmd.toml {
-                    unimplemented!()
-                    //if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
-                    //    // TODO: copy file to doc_store_url
-                    //    let new_doc = get_doc_info().await?;
-                    //    add_doc(&db, &new_doc).await?;
-                    //    let docs: Vec<Document> = get_docs(&db).await?;
-                    //    println!("Docs:\n{:?}", docs);
-                    //} else {
-                    //    return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
-                    //}
+                    if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("toml")) {
+                        let toml_str = std::fs::read_to_string(path)?;
+                        let docs: TomlDocuments = toml::from_str(&toml_str)?;
+                        docs.add_to_db(&db).await?;
+                        let docs: Vec<Document> = get_docs(&db).await?;
+                        println!("Docs:\n{:#?}", docs);
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
+                    }
                 }
             }
             DocSubCmd::Modify(cmd) => unimplemented!(),
@@ -74,13 +69,15 @@ async fn main() -> anyhow::Result<()> {
                         .await?;
                 }
                 if let Some(title) = cmd.title {
-                    Document::from_title(title, &db)
-                        .await?
-                        .delete_from_db(&db)
-                        .await?;
+                    match Document::from_title(&title, &db).await {
+                        Ok(doc_opt) => if let Some(doc) = doc_opt {
+                            doc.delete_from_db(&db).await?;
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 let docs: Vec<Document> = get_docs(&db).await?;
-                println!("Docs:\n{:?}", docs);
+                println!("Docs:\n{:#?}", docs);
             }
             DocSubCmd::List => {
                 let docs: Vec<Document> = get_docs(&db).await?;

@@ -1,10 +1,12 @@
-use crate::tag::TagInputList;
+use crate::tag::{TagInputList, Tag};
 use sqlx::{FromRow, SqlitePool};
 use std::io::Write;
 use std::path::PathBuf;
 use uuid::Uuid;
+use serde::Deserialize;
 
-#[derive(FromRow, Debug, Hash)]
+#[derive(FromRow, Debug, Hash, Deserialize)]
+#[serde(default)]
 pub struct Document {
     pub id: u32,
     pub title: String,
@@ -57,20 +59,25 @@ impl Document {
         return Ok(doc);
     }
 
-    pub async fn from_title(title: String, pool: &SqlitePool) -> anyhow::Result<Self> {
-        let doc = sqlx::query_as::<_, Self>(
+    pub async fn from_title(title: &str, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
+        let mut matches = sqlx::query_as::<_, Self>(
             r#"
             SELECT * FROM documents
             WHERE title=?1
             "#,
         )
         .bind(&title)
-        .fetch_one(pool)
+        .fetch_all(pool)
         .await?;
 
-        return Ok(doc);
+        return match matches.len() {
+            0 => Ok(None),
+            1 => Ok(matches.pop()),
+            _ => Err(anyhow::anyhow!("Duplicate entries detected!")),
+        };
     }
 
+    // Check for existing tags
     pub async fn add_to_db(self, path: PathBuf, pool: &SqlitePool) -> anyhow::Result<()> {
         let Document {
             title,
@@ -83,6 +90,14 @@ impl Document {
             ..
         } = self;
 
+        match Document::from_title(&title, pool).await {
+            Ok(doc_opt) => if let Some(doc) = doc_opt {
+                println!("Document already in database: {}", doc.title);
+                return Ok(());
+            },
+            Err(e) => return Err(e),
+        }
+
         // Store copy of pdf in documents folder
         let uuid = Uuid::new_v4().to_string();
         let original_path = path;
@@ -90,6 +105,11 @@ impl Document {
             std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(uuid.clone() + ".pdf");
         std::fs::copy(original_path.clone(), stored_path.clone())?;
         println!("Document {:?} stored as {:?}", original_path, stored_path);
+
+        // Add tags to database
+        for tag in TagInputList::from(tags.as_str()).as_tags() {
+            tag.add_to_db(&pool).await?;
+        }
 
         // Add entry to database
         sqlx::query(
@@ -107,14 +127,14 @@ impl Document {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
         )
-        .bind(title)
-        .bind(author_last)
-        .bind(author_first)
+        .bind(title.to_lowercase())
+        .bind(author_last.to_lowercase())
+        .bind(author_first.to_lowercase())
         .bind(year)
-        .bind(publication)
+        .bind(publication.to_lowercase())
         .bind(volume)
         .bind(uuid)
-        .bind(tags)
+        .bind(tags.to_lowercase())
         .execute(pool)
         .await?;
         return Ok(());
@@ -128,8 +148,11 @@ impl Document {
         } = self;
         let fname = uuid + ".pdf";
         let asset_path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(fname);
-        std::fs::remove_file(asset_path.clone())?;
-        println!("Document {:?} deleted.", asset_path);
+        if std::fs::remove_file(asset_path.clone()).is_err() {
+            println!("Could not delete {:?}.", asset_path);
+        } else {
+            println!("Document {:?} deleted.", asset_path);
+        };
 
         // Delete entry from database
         sqlx::query(
@@ -188,7 +211,7 @@ impl Document {
             String::new()
         } else {
             TagInputList::from(buf.trim().trim_matches('"'))
-                .tags()
+                .tag_values()
                 .join(",")
         };
 
@@ -212,5 +235,21 @@ impl Document {
             "y" | "yes" => return Ok(doc),
             _ => return Err(anyhow::anyhow!("Entry cancelled.")),
         }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct TomlDocuments {
+    pub documents: Vec<Document>,
+}
+
+impl TomlDocuments {
+    pub async fn add_to_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        for mut doc in self.documents.into_iter() {
+            doc.title = doc.title.to_lowercase();
+            let path = std::mem::take(&mut doc.original_path);
+            doc.add_to_db(path, pool).await?;
+        }
+        return Ok(());
     }
 }
