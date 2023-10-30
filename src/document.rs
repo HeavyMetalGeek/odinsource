@@ -1,9 +1,9 @@
-use crate::tag::{TagInputList, Tag};
+use crate::tag::{Tag, TagInputList};
+use serde::Deserialize;
 use sqlx::{FromRow, SqlitePool};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use uuid::Uuid;
-use serde::Deserialize;
 
 #[derive(FromRow, Debug, Hash, Deserialize)]
 #[serde(default)]
@@ -19,6 +19,7 @@ pub struct Document {
     pub publication: String,
     pub volume: u16,
     pub tags: String,
+    pub doi: String,
     pub uuid: String,
     #[sqlx(skip)]
     pub original_path: PathBuf,
@@ -37,6 +38,7 @@ impl Default for Document {
             publication: String::new(),
             volume: 0,
             tags: String::new(),
+            doi: String::new(),
             uuid: String::new(),
             original_path: PathBuf::new(),
             stored_path: PathBuf::new(),
@@ -77,6 +79,23 @@ impl Document {
         };
     }
 
+    pub async fn stored_path(&mut self) -> anyhow::Result<&Path> {
+        if self.stored_path.is_file() {
+            return Ok(self.stored_path.as_path());
+        }
+        if self.uuid.len() == 0 {
+            return Err(anyhow::anyhow!("UUID is not available."));
+        }
+        let fname = self.uuid.clone() + ".pdf";
+        let path = std::path::PathBuf::from(std::env!("DOC_STORE_URL"))
+            .join(fname);
+        if !path.is_file() {
+            return Err(anyhow::anyhow!("{} is not currently stored", self.title));
+        }
+        self.stored_path = path;
+        return Ok(self.stored_path.as_path());
+    }
+
     // Check for existing tags
     pub async fn add_to_db(self, path: PathBuf, pool: &SqlitePool) -> anyhow::Result<()> {
         let Document {
@@ -91,10 +110,12 @@ impl Document {
         } = self;
 
         match Document::from_title(&title, pool).await {
-            Ok(doc_opt) => if let Some(doc) = doc_opt {
-                println!("Document already in database: {}", doc.title);
-                return Ok(());
-            },
+            Ok(doc_opt) => {
+                if let Some(doc) = doc_opt {
+                    println!("Document already in database: {}", doc.title);
+                    return Ok(());
+                }
+            }
             Err(e) => return Err(e),
         }
 
@@ -141,11 +162,7 @@ impl Document {
     }
 
     pub async fn delete_from_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
-        let Document {
-            title,
-            uuid,
-            ..
-        } = self;
+        let Document { title, uuid, .. } = self;
         let fname = uuid + ".pdf";
         let asset_path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(fname);
         if std::fs::remove_file(asset_path.clone()).is_err() {

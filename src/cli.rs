@@ -63,6 +63,7 @@ pub enum DocSubCmd {
     Modify(ModifyDoc),
     Delete(DeleteDoc),
     List,
+    Open(OpenDoc),
 }
 
 #[derive(Debug, Args)]
@@ -82,6 +83,15 @@ pub struct ModifyDoc {
 #[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
 pub struct DeleteDoc {
+    #[arg(long)]
+    pub id: Option<u32>,
+    #[arg(long)]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct OpenDoc {
     #[arg(long)]
     pub id: Option<u32>,
     #[arg(long)]

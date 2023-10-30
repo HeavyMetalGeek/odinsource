@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
             TagSubCmd::Modify(cmd) => unimplemented!(),
             TagSubCmd::Delete(cmd) => {
                 let tags = TagInputList::from(cmd.name.as_str());
-                tags.delete_from_db(&db).await.context("delete_tags")?;
+                tags.delete_from_db(&db).await.context("delete tag(s)")?;
                 let tags: Vec<Tag> = get_tags(&db).await?;
                 println!("Tags:\n{:#?}", tags);
             }
@@ -70,8 +70,10 @@ async fn main() -> anyhow::Result<()> {
                 }
                 if let Some(title) = cmd.title {
                     match Document::from_title(&title, &db).await {
-                        Ok(doc_opt) => if let Some(doc) = doc_opt {
-                            doc.delete_from_db(&db).await?;
+                        Ok(doc_opt) => {
+                            if let Some(doc) = doc_opt {
+                                doc.delete_from_db(&db).await?;
+                            }
                         }
                         Err(e) => return Err(e),
                     }
@@ -82,6 +84,21 @@ async fn main() -> anyhow::Result<()> {
             DocSubCmd::List => {
                 let docs: Vec<Document> = get_docs(&db).await?;
                 println!("Docs:\n{:#?}", docs);
+            }
+            DocSubCmd::Open(cmd) => {
+                let mut doc = Document::default();
+                if let Some(id) = cmd.id {
+                    doc = Document::from_id(id, &db).await?;
+                } else if let Some(title) = cmd.title {
+                    doc = Document::from_title(&title, &db)
+                        .await?
+                        .ok_or(anyhow::anyhow!("Title not in DB: {}", title))?;
+                }
+                let path = doc.stored_path().await?;
+                std::process::Command::new("xdg-open")
+                    .arg(path)
+                    .spawn()
+                    .expect("Failed to open document");
             }
         },
     }
@@ -123,7 +140,8 @@ async fn initialize_doc_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryRe
             publication TEXT NOT NULL,
             volume INTEGER DEFAULT 0,
             uuid TEXT NOT NULL,
-            tags TEXT DEFAULT ''
+            tags TEXT DEFAULT '',
+            doi TEXT DEFAULT ''
         );
         "#,
     )
@@ -159,7 +177,7 @@ async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<Tag>> {
 async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
     return Ok(sqlx::query_as::<_, Document>(
         r#"
-        SELECT id, title, author_firstname, author_lastname, year_published, publication, volume, uuid, tags
+        SELECT *
         FROM documents
         "#,
     )
