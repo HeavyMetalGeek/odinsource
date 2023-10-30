@@ -89,7 +89,8 @@ async fn main() -> anyhow::Result<()> {
                 let mut doc = Document::default();
                 if let Some(id) = cmd.id {
                     doc = Document::from_id(id, &db).await?;
-                } else if let Some(title) = cmd.title {
+                } else if let Some(mut title) = cmd.title {
+                    title = title.trim().to_lowercase();
                     doc = Document::from_title(&title, &db)
                         .await?
                         .ok_or(anyhow::anyhow!("Title not in DB: {}", title))?;
@@ -166,7 +167,7 @@ async fn initialize_tag_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryRe
 async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<Tag>> {
     return Ok(sqlx::query_as::<_, Tag>(
         r#"
-        SELECT id, value
+        SELECT *
         FROM tags
         "#,
     )

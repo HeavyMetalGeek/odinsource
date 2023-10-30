@@ -9,8 +9,10 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum EntityType {
+    /// Operations for document tags
     Tag(TagCmd),
     #[command(name = "doc")]
+    /// Operations for documents
     Document(DocCmd),
 }
 
@@ -22,9 +24,13 @@ pub struct TagCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum TagSubCmd {
+    /// Add one or multiple tags.  Tag lists must be comma separated.
     Add(AddTag),
+    /// Modify stored tags.  (Unimplemented)
     Modify(ModifyTag),
+    /// Delete stored tags.
     Delete(DeleteTag),
+    /// List stored tags.
     List,
 }
 
@@ -59,10 +65,15 @@ pub struct DocCmd {
 
 #[derive(Debug, Subcommand)]
 pub enum DocSubCmd {
+    /// Add one or multiple documents.  Multiple documents must be added via toml file.
     Add(AddDoc),
+    /// Modify stored document information.
     Modify(ModifyDoc),
+    /// Delete stored documents.
     Delete(DeleteDoc),
+    /// List stored documents.
     List,
+    /// Open a stored document by id or title.
     Open(OpenDoc),
 }
 
