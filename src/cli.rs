@@ -52,9 +52,9 @@ pub struct ModifyTag {
 #[group(required = true, multiple = false)]
 pub struct DeleteTag {
     #[arg(long)]
-    pub id: u32,
+    pub id: Option<u32>,
     #[arg(long)]
-    pub name: String,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Args)]

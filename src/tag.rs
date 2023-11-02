@@ -14,14 +14,28 @@ impl Tag {
         };
     }
 
-    pub async fn from_value_in_db(value: String, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
+    pub async fn from_id_in_db(id: u32, pool: &SqlitePool) -> anyhow::Result<Self> {
+        let tag = sqlx::query_as::<_, Self>(
+            r#"
+            SELECT * FROM tags
+            WHERE id=?1
+            "#,
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+
+        return Ok(tag);
+    }
+
+    pub async fn from_value_in_db(value: &str, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
         let mut tag = sqlx::query_as::<_, Self>(
             r#"
             SELECT * FROM tags
             WHERE value=?1
             "#,
         )
-        .bind(&value)
+        .bind(value)
         .fetch_all(pool)
         .await?;
 
@@ -32,7 +46,7 @@ impl Tag {
         let Tag { value, .. } = self;
         let value = value.to_lowercase();
 
-        match Tag::from_value_in_db(value.clone(), pool).await {
+        match Tag::from_value_in_db(&value, pool).await {
             Ok(doc_opt) => {
                 if let None = doc_opt {
                     // Add entry to database
@@ -43,6 +57,32 @@ impl Tag {
                         "#,
                     )
                     .bind(value)
+                    .execute(pool)
+                    .await?;
+                }
+            }
+            Err(e) => return Err(e),
+        }
+
+        return Ok(());
+    }
+
+    pub async fn delete_from_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        let Tag { value, .. } = self;
+        println!("Got value: {}", value);
+        let value = value.to_lowercase();
+
+        match Tag::from_value_in_db(&value, pool).await {
+            Ok(tag_opt) => {
+                if let Some(tag) = tag_opt {
+                    // Add entry to database
+                    sqlx::query(
+                        r#"
+                        DELETE FROM tags
+                        WHERE value=?1
+                        "#,
+                    )
+                    .bind(tag.value)
                     .execute(pool)
                     .await?;
                 }

@@ -28,8 +28,16 @@ async fn main() -> anyhow::Result<()> {
             }
             TagSubCmd::Modify(cmd) => unimplemented!(),
             TagSubCmd::Delete(cmd) => {
-                let tags = TagInputList::from(cmd.name.as_str());
-                tags.delete_from_db(&db).await.context("delete tag(s)")?;
+                if let Some(name) = cmd.name {
+                    let tag = match Tag::from_value_in_db(&name, &db).await? {
+                        Some(t) => t,
+                        None => Err(anyhow::anyhow!("Tag name not in DB: {}", name))?,
+                    };
+                    tag.delete_from_db(&db).await.context("delete tag")?;
+                } else if let Some(id) = cmd.id {
+                    let tag = Tag::from_id_in_db(id, &db).await?;
+                    tag.delete_from_db(&db).await.context("delete tag")?;
+                }
                 let tags: Vec<Tag> = get_tags(&db).await?;
                 println!("Tags:\n{:#?}", tags);
             }
