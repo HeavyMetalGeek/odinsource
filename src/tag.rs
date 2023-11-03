@@ -1,96 +1,174 @@
 use sqlx::{FromRow, SqlitePool};
 
+/// A tag struct for representing query results.
+/// Guaranteed to be complete and represent a valid row
 #[derive(FromRow, Debug)]
-pub struct Tag {
+struct DatabaseTag {
     pub id: u32,
     pub value: String,
 }
 
-impl Tag {
-    pub fn from_value(value: &str) -> Self {
-        return Self {
-            id: 0,
-            value: value.to_string(),
+impl std::convert::Into<Tag> for DatabaseTag {
+    fn into(self) -> Tag {
+        let Self { id, value } = self;
+        return Tag {
+            id: Some(id),
+            value,
         };
     }
+}
 
-    pub async fn from_id_in_db(id: u32, pool: &SqlitePool) -> anyhow::Result<Self> {
-        let tag = sqlx::query_as::<_, Self>(
+impl DatabaseTag {
+    pub async fn from_id(id: u32, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
+        return Ok(sqlx::query_as::<_, Self>(
             r#"
             SELECT * FROM tags
             WHERE id=?1
             "#,
         )
         .bind(id)
-        .fetch_one(pool)
-        .await?;
-
-        return Ok(tag);
+        .fetch_optional(pool)
+        .await?);
     }
 
-    pub async fn from_value_in_db(value: &str, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
-        let mut tag = sqlx::query_as::<_, Self>(
+    pub async fn from_value(value: &str, pool: &SqlitePool) -> anyhow::Result<Option<Self>> {
+        return Ok(sqlx::query_as::<_, Self>(
             r#"
             SELECT * FROM tags
             WHERE value=?1
             "#,
         )
         .bind(value)
-        .fetch_all(pool)
-        .await?;
-
-        return Ok(tag.pop());
+        .fetch_optional(pool)
+        .await?);
     }
 
-    pub async fn add_to_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
-        let Tag { value, .. } = self;
-        let value = value.to_lowercase();
+    pub async fn insert_from_value(value: &str, pool: &SqlitePool) -> anyhow::Result<Self> {
+        match Self::from_value(value, pool).await? {
+            Some(dbt) => {
+                println!("Tag already exists: {:?}", dbt);
+                return Ok(dbt);
+            }
+            None => {
+                sqlx::query(
+                    r#"
+                    INSERT INTO tags (value)
+                    VALUES (?1)
+                    "#,
+                )
+                .bind(value)
+                .execute(pool)
+                .await?;
+                return match Self::from_value(value, pool).await? {
+                    Some(dbt) => Ok(dbt),
+                    None => Err(anyhow::anyhow!("Failed to insert tag with value {}", value)),
+                };
+            }
+        };
+    }
 
-        match Tag::from_value_in_db(&value, pool).await {
-            Ok(doc_opt) => {
-                if let None = doc_opt {
-                    // Add entry to database
-                    sqlx::query(
-                        r#"
+    pub async fn delete(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM tags
+            WHERE value=?1
+            "#,
+        )
+        .bind(&self.value)
+        .execute(pool)
+        .await?;
+        return Ok(());
+    }
+
+    pub async fn from_tag(tag: Tag, pool: &SqlitePool) -> anyhow::Result<Self> {
+        return match Self::from_value(&tag.value, pool).await? {
+            Some(dbt) => Ok(dbt),
+            None => {
+                // Add entry to database
+                sqlx::query(
+                    r#"
                         INSERT INTO tags (value)
                         VALUES (?1)
                         "#,
-                    )
-                    .bind(value)
-                    .execute(pool)
-                    .await?;
-                }
+                )
+                .bind(&tag.value)
+                .execute(pool)
+                .await?;
+                return match Self::from_value(&tag.value, pool).await? {
+                    Some(dbt) => Ok(dbt),
+                    None => Err(anyhow::anyhow!(
+                        "Failed to add tag with value: {}",
+                        &tag.value
+                    )),
+                };
             }
-            Err(e) => return Err(e),
-        }
+        };
+    }
+}
 
+#[derive(FromRow, Debug)]
+pub struct Tag {
+    pub id: Option<u32>,
+    pub value: String,
+}
+
+impl Tag {
+    pub fn from_value(value: &str) -> Self {
+        return Self {
+            id: None,
+            value: value.to_lowercase(),
+        };
+    }
+
+    pub async fn from_id(id: u32, pool:&SqlitePool) -> anyhow::Result<Self> {
+        return match DatabaseTag::from_id(id, pool).await? {
+            Some(dbt) => Ok(dbt.into()),
+            None => Err(anyhow::anyhow!("Tag does not exist with id: {}", id))?,
+        };
+    }
+
+    pub async fn insert(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        let Tag { value, .. } = self;
+        let value = value.to_lowercase();
+        let _db_tag = DatabaseTag::insert_from_value(&value, pool)
+            .await?;
         return Ok(());
     }
 
-    pub async fn delete_from_db(self, pool: &SqlitePool) -> anyhow::Result<()> {
+    pub async fn delete(self, pool: &SqlitePool) -> anyhow::Result<()> {
         let Tag { value, .. } = self;
-        println!("Got value: {}", value);
         let value = value.to_lowercase();
+        return match DatabaseTag::from_value(&value, pool).await? {
+            Some(dbt) => Ok(dbt.delete(pool).await?),
+            None => Err(anyhow::anyhow!("No tag exists with value: {}", value))?,
+        };
+    }
+}
 
-        match Tag::from_value_in_db(&value, pool).await {
-            Ok(tag_opt) => {
-                if let Some(tag) = tag_opt {
-                    // Add entry to database
-                    sqlx::query(
-                        r#"
-                        DELETE FROM tags
-                        WHERE value=?1
-                        "#,
-                    )
-                    .bind(tag.value)
-                    .execute(pool)
-                    .await?;
-                }
-            }
-            Err(e) => return Err(e),
-        }
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return match self.id {
+            Some(id) => write!(f, "{}: {}", id, self.value),
+            None => write!(f, "None: {}", self.value),
+        };
+    }
+}
 
-        return Ok(());
+#[derive(Debug)]
+pub struct TagList(pub Vec<Tag>);
+
+impl std::fmt::Display for TagList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return self.0.iter().fold(Ok(()), |result, tag| {
+            result.and_then(|_| writeln!(f, "{}", tag))
+        });
+    }
+}
+
+impl std::ops::Deref for TagList {
+    type Target = Vec<Tag>;
+    fn deref(&self) -> &Self::Target {
+        return &self.0;
     }
 }
 

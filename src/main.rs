@@ -29,21 +29,14 @@ async fn main() -> anyhow::Result<()> {
             TagSubCmd::Modify(cmd) => unimplemented!(),
             TagSubCmd::Delete(cmd) => {
                 if let Some(name) = cmd.name {
-                    let tag = match Tag::from_value_in_db(&name, &db).await? {
-                        Some(t) => t,
-                        None => Err(anyhow::anyhow!("Tag name not in DB: {}", name))?,
-                    };
-                    tag.delete_from_db(&db).await.context("delete tag")?;
+                    Tag::from_value(&name).delete(&db).await?;
                 } else if let Some(id) = cmd.id {
-                    let tag = Tag::from_id_in_db(id, &db).await?;
-                    tag.delete_from_db(&db).await.context("delete tag")?;
+                    Tag::from_id(id, &db).await?.delete(&db).await?;
                 }
-                let tags: Vec<Tag> = get_tags(&db).await?;
-                println!("Tags:\n{:#?}", tags);
+                print_tags(&db).await?;
             }
             TagSubCmd::List => {
-                let tags: Vec<Tag> = get_tags(&db).await?;
-                println!("Tags:\n{:#?}", tags);
+                print_tags(&db).await?;
             }
         },
         EntityType::Document(cmd) => match cmd.command {
@@ -61,8 +54,7 @@ async fn main() -> anyhow::Result<()> {
                         let toml_str = std::fs::read_to_string(path)?;
                         let docs: TomlDocuments = toml::from_str(&toml_str)?;
                         docs.add_to_db(&db).await?;
-                        let docs: Vec<Document> = get_docs(&db).await?;
-                        println!("Docs:\n{:#?}", docs);
+                        print_docs(&db).await?;
                     } else {
                         return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
                     }
@@ -86,12 +78,10 @@ async fn main() -> anyhow::Result<()> {
                         Err(e) => return Err(e),
                     }
                 }
-                let docs: Vec<Document> = get_docs(&db).await?;
-                println!("Docs:\n{:#?}", docs);
+                print_docs(&db).await?;
             }
             DocSubCmd::List => {
-                let docs: Vec<Document> = get_docs(&db).await?;
-                println!("Docs:\n{:#?}", docs);
+                print_docs(&db).await?;
             }
             DocSubCmd::Open(cmd) => {
                 let mut doc = Document::default();
@@ -183,6 +173,11 @@ async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<Tag>> {
     .await?);
 }
 
+async fn print_tags(pool: &SqlitePool) -> anyhow::Result<()> {
+    println!("Tags:\n{}", TagList(get_tags(pool).await?));
+    return Ok(());
+}
+
 async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
     return Ok(sqlx::query_as::<_, Document>(
         r#"
@@ -193,3 +188,9 @@ async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
     .fetch_all(pool)
     .await?);
 }
+
+async fn print_docs(pool: &SqlitePool) -> anyhow::Result<()> {
+    println!("Documents:\n{}", DocList(get_docs(pool).await?));
+    return Ok(());
+}
+

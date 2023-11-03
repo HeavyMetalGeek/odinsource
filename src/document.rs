@@ -46,6 +46,19 @@ impl Default for Document {
     }
 }
 
+impl std::fmt::Display for Document {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}: {}", self.id, self.title)?;
+        writeln!(f, "    author: {}, {}", self.author_last, self.author_first)?;
+        writeln!(f, "    publication: {}", self.publication)?;
+        writeln!(f, "    volume: {}", self.volume)?;
+        writeln!(f, "    year: {}", self.year)?;
+        writeln!(f, "    doi: {}", self.doi)?;
+        writeln!(f, "    uuid: {}", self.uuid)?;
+        writeln!(f, "    tags: {}", self.tags)
+    }
+}
+
 impl Document {
     pub async fn from_id(id: u32, pool: &SqlitePool) -> anyhow::Result<Self> {
         let doc = sqlx::query_as::<_, Self>(
@@ -129,7 +142,7 @@ impl Document {
 
         // Add tags to database
         for tag in TagInputList::from(tags.as_str()).as_tags() {
-            tag.add_to_db(&pool).await?;
+            tag.insert(&pool).await?;
         }
 
         // Add entry to database
@@ -268,5 +281,23 @@ impl TomlDocuments {
             doc.add_to_db(path, pool).await?;
         }
         return Ok(());
+    }
+}
+
+#[derive(Debug)]
+pub struct DocList(pub Vec<Document>);
+
+impl std::fmt::Display for DocList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        return self.0.iter().fold(Ok(()), |result, doc| {
+            result.and_then(|_| writeln!(f, "{}", doc))
+        });
+    }
+}
+
+impl std::ops::Deref for DocList {
+    type Target = Vec<Document>;
+    fn deref(&self) -> &Self::Target {
+        return &self.0;
     }
 }
