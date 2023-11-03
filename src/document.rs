@@ -190,15 +190,15 @@ impl DatabaseDoc {
 impl std::fmt::Display for DatabaseDoc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}", "-".repeat(80))?;
-        writeln!(f, "id: {}", self.id)?;
-        writeln!(f, "title: {}", self.title)?;
-        writeln!(f, "author: {}", self.author)?;
-        writeln!(f, "publication: {}", self.publication)?;
-        writeln!(f, "volume: {}", self.volume)?;
-        writeln!(f, "year: {}", self.year)?;
-        writeln!(f, "doi: {}", self.doi)?;
-        writeln!(f, "uuid: {}", self.uuid)?;
-        writeln!(f, "tags: {}", self.tags)?;
+        writeln!(f, "{:12} {}", "id:", self.id)?;
+        writeln!(f, "{:12} {}", "title:", self.title)?;
+        writeln!(f, "{:12} {}", "author:", self.author)?;
+        writeln!(f, "{:12} {}", "publication:", self.publication)?;
+        writeln!(f, "{:12} {}", "volume:", self.volume)?;
+        writeln!(f, "{:12} {}", "year:", self.year)?;
+        writeln!(f, "{:12} {}", "doi:", self.doi)?;
+        writeln!(f, "{:12} {}", "tags:", self.tags)?;
+        writeln!(f, "{:12} {}", "uuid:", self.uuid)?;
         writeln!(f, "{}", "-".repeat(80))
     }
 }
@@ -237,15 +237,15 @@ impl std::fmt::Display for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}", "-".repeat(80))?;
         let id = self.id.map_or("None".to_string(), |v| v.to_string());
-        writeln!(f, "id: {}", id)?;
-        writeln!(f, "title: {}", self.title)?;
-        writeln!(f, "author: {}", self.author)?;
-        writeln!(f, "publication: {}", self.publication)?;
-        writeln!(f, "volume: {}", self.volume)?;
-        writeln!(f, "year: {}", self.year)?;
-        writeln!(f, "doi: {}", self.doi)?;
-        writeln!(f, "tags: {}", self.tags)?;
-        writeln!(f, "path: {:?}", self.path)?;
+        writeln!(f, "{:12} {}", "id:", id)?;
+        writeln!(f, "{:12} {}", "title:", self.title)?;
+        writeln!(f, "{:12} {}", "author:", self.author)?;
+        writeln!(f, "{:12} {}", "publication:", self.publication)?;
+        writeln!(f, "{:12} {}", "volume:", self.volume)?;
+        writeln!(f, "{:12} {}", "year:", self.year)?;
+        writeln!(f, "{:12} {}", "doi:", self.doi)?;
+        writeln!(f, "{:12} {}", "tags:", self.tags)?;
+        writeln!(f, "{:12} {:?}", "path:", self.path)?;
         writeln!(f, "{}", "-".repeat(80))
     }
 }
