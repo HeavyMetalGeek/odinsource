@@ -205,23 +205,31 @@ impl std::fmt::Display for DatabaseDoc {
 
 /// Used for user interface (CLI, toml, etc.)
 #[derive(Debug, Hash, Deserialize, Args)]
-#[group(required = true, multiple = false)]
 pub struct Document {
+    #[arg(skip)]
     pub id: Option<u32>,
+    #[arg(long, value_parser = crate::cli::input_to_lowercase, required = true)]
     #[serde(default = "String::new")]
     pub title: String,
+    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
     #[serde(default = "String::new")]
     pub author: String,
+    #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub year: u16,
+    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
     #[serde(default = "String::new")]
     pub publication: String,
+    #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub volume: u16,
+    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
     #[serde(default = "String::new")]
     pub tags: String,
+    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
     #[serde(default = "String::new")]
     pub doi: String,
+    #[arg(long, value_parser = crate::cli::verify_path, required = true)]
     pub path: PathBuf,
 }
 

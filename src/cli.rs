@@ -2,6 +2,21 @@ use crate::Document;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
+pub fn input_to_lowercase(value: &str) -> anyhow::Result<String> {
+    return Ok(value.to_lowercase());
+}
+
+pub fn verify_path(path: &str) -> anyhow::Result<PathBuf> {
+    let path = PathBuf::from(path);
+    if !path.is_file() || path.extension() != Some(&std::ffi::OsStr::new("pdf")) {
+        return Err(anyhow::anyhow!(
+            "Path does not reference a valid PDF: {:?}",
+            path
+        ))?;
+    }
+    return Ok(path);
+}
+
 #[derive(Parser, Debug)]
 pub struct Cli {
     #[command(subcommand)]
@@ -90,8 +105,8 @@ pub struct AddDoc {
 
 #[derive(Debug, Subcommand)]
 pub enum AddDocSubCmd {
-    FromToml(AddDocTomlPath),
     Single(Document),
+    FromToml(AddDocTomlPath),
 }
 
 #[derive(Debug, Args)]

@@ -38,7 +38,10 @@ async fn main() -> anyhow::Result<()> {
         },
         EntityType::Document(cmd) => match cmd.command {
             DocSubCmd::Add(cmd) => match cmd.source {
-                AddDocSubCmd::Single(doc) => println!("DOC: {:?}", doc),
+                AddDocSubCmd::Single(doc) => {
+                    doc.insert(&db).await?;
+                    print_docs(&db).await?;
+                },
                 AddDocSubCmd::FromToml(toml) => {
                     if toml.path.is_file()
                         && toml.path.extension() == Some(&std::ffi::OsStr::new("toml"))
