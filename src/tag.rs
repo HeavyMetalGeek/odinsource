@@ -3,7 +3,7 @@ use sqlx::{FromRow, SqlitePool};
 /// A tag struct for representing query results.
 /// Guaranteed to be complete and represent a valid row
 #[derive(FromRow, Debug)]
-struct DatabaseTag {
+pub struct DatabaseTag {
     pub id: u32,
     pub value: String,
 }
@@ -15,6 +15,11 @@ impl std::convert::Into<Tag> for DatabaseTag {
             id: Some(id),
             value,
         };
+    }
+}
+impl std::fmt::Display for DatabaseTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            return write!(f, "id {}: {}", self.id, self.value);
     }
 }
 
@@ -43,8 +48,8 @@ impl DatabaseTag {
         .await?);
     }
 
-    pub async fn insert_from_value(value: &str, pool: &SqlitePool) -> anyhow::Result<Self> {
-        match Self::from_value(value, pool).await? {
+    pub async fn from_insert(tag: Tag, pool: &SqlitePool) -> anyhow::Result<Self> {
+        match Self::from_value(&tag.value, pool).await? {
             Some(dbt) => {
                 println!("Tag already exists: {:?}", dbt);
                 return Ok(dbt);
@@ -56,12 +61,15 @@ impl DatabaseTag {
                     VALUES (?1)
                     "#,
                 )
-                .bind(value)
+                .bind(&tag.value)
                 .execute(pool)
                 .await?;
-                return match Self::from_value(value, pool).await? {
+                return match Self::from_value(&tag.value, pool).await? {
                     Some(dbt) => Ok(dbt),
-                    None => Err(anyhow::anyhow!("Failed to insert tag with value {}", value)),
+                    None => Err(anyhow::anyhow!(
+                        "Failed to insert tag with value {}",
+                        &tag.value
+                    )),
                 };
             }
         };
@@ -113,14 +121,14 @@ pub struct Tag {
 }
 
 impl Tag {
-    pub fn from_value(value: &str) -> Self {
+    pub fn new(value: &str) -> Self {
         return Self {
             id: None,
             value: value.to_lowercase(),
         };
     }
 
-    pub async fn from_id(id: u32, pool:&SqlitePool) -> anyhow::Result<Self> {
+    pub async fn from_id(id: u32, pool: &SqlitePool) -> anyhow::Result<Self> {
         return match DatabaseTag::from_id(id, pool).await? {
             Some(dbt) => Ok(dbt.into()),
             None => Err(anyhow::anyhow!("Tag does not exist with id: {}", id))?,
@@ -128,19 +136,17 @@ impl Tag {
     }
 
     pub async fn insert(self, pool: &SqlitePool) -> anyhow::Result<()> {
-        let Tag { value, .. } = self;
-        let value = value.to_lowercase();
-        let _db_tag = DatabaseTag::insert_from_value(&value, pool)
-            .await?;
+        let _db_tag = DatabaseTag::from_insert(self, pool).await?;
         return Ok(());
     }
 
     pub async fn delete(self, pool: &SqlitePool) -> anyhow::Result<()> {
-        let Tag { value, .. } = self;
-        let value = value.to_lowercase();
-        return match DatabaseTag::from_value(&value, pool).await? {
-            Some(dbt) => Ok(dbt.delete(pool).await?),
-            None => Err(anyhow::anyhow!("No tag exists with value: {}", value))?,
+        return match DatabaseTag::from_value(&self.value, pool).await? {
+            Some(dbt) => dbt.delete(pool).await,
+            None => {
+                println!("Tag not in DB: {:?}", self);
+                return Ok(());
+            },
         };
     }
 }
@@ -148,14 +154,14 @@ impl Tag {
 impl std::fmt::Display for Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return match self.id {
-            Some(id) => write!(f, "{}: {}", id, self.value),
-            None => write!(f, "None: {}", self.value),
+            Some(id) => write!(f, "id {}: {}", id, self.value),
+            None => write!(f, "id None: {}", self.value),
         };
     }
 }
 
 #[derive(Debug)]
-pub struct TagList(pub Vec<Tag>);
+pub struct TagList(pub Vec<DatabaseTag>);
 
 impl std::fmt::Display for TagList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -166,7 +172,7 @@ impl std::fmt::Display for TagList {
 }
 
 impl std::ops::Deref for TagList {
-    type Target = Vec<Tag>;
+    type Target = Vec<DatabaseTag>;
     fn deref(&self) -> &Self::Target {
         return &self.0;
     }
@@ -200,7 +206,7 @@ impl std::convert::From<&str> for TagInputList {
 
 impl TagInputList {
     pub fn as_tags(self) -> Vec<Tag> {
-        return self.0.into_iter().map(|t| Tag::from_value(&t)).collect();
+        return self.0.into_iter().map(|t| Tag::new(&t)).collect();
     }
 
     pub fn tag_values(&self) -> &Vec<String> {

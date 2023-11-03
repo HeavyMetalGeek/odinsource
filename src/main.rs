@@ -6,7 +6,6 @@ use cli::*;
 use document::*;
 use tag::*;
 
-use anyhow::Context;
 //use serde::Deserialize;
 use clap::Parser;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Sqlite, SqlitePool};
@@ -21,15 +20,13 @@ async fn main() -> anyhow::Result<()> {
     match args.entity_type {
         EntityType::Tag(cmd) => match cmd.command {
             TagSubCmd::Add(cmd) => {
-                let tags = TagInputList::from(cmd.name.as_str());
-                tags.add_to_db(&db).await.context("add tag(s)")?;
-                let tags: Vec<Tag> = get_tags(&db).await?;
-                println!("Tags:\n{:#?}", tags);
+                Tag::new(&cmd.name).insert(&db).await?;
+                print_tags(&db).await?;
             }
             TagSubCmd::Modify(cmd) => unimplemented!(),
             TagSubCmd::Delete(cmd) => {
                 if let Some(name) = cmd.name {
-                    Tag::from_value(&name).delete(&db).await?;
+                    Tag::new(&name).delete(&db).await?;
                 } else if let Some(id) = cmd.id {
                     Tag::from_id(id, &db).await?.delete(&db).await?;
                 }
@@ -40,43 +37,39 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         EntityType::Document(cmd) => match cmd.command {
-            DocSubCmd::Add(cmd) => {
-                if let Some(path) = cmd.path {
-                    if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
-                        Document::from_prompts().await?.add_to_db(path, &db).await?;
-                        let docs: Vec<Document> = get_docs(&db).await?;
-                        println!("Docs:\n{:#?}", docs);
-                    } else {
-                        return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
-                    }
-                } else if let Some(path) = cmd.toml {
-                    if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("toml")) {
-                        let toml_str = std::fs::read_to_string(path)?;
+            DocSubCmd::Add(cmd) => match cmd.source {
+                AddDocSubCmd::Single(doc) => println!("DOC: {:?}", doc),
+                AddDocSubCmd::FromToml(toml) => {
+                    if toml.path.is_file()
+                        && toml.path.extension() == Some(&std::ffi::OsStr::new("toml"))
+                    {
+                        let toml_str = std::fs::read_to_string(toml.path)?;
                         let docs: TomlDocuments = toml::from_str(&toml_str)?;
                         docs.add_to_db(&db).await?;
                         print_docs(&db).await?;
                     } else {
-                        return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
+                        return Err(anyhow::anyhow!("Invalid document file: {:?}", toml.path));
                     }
                 }
-            }
+            },
+            //DocSubCmd::Add(cmd) => {
+            //    if let Some(path) = cmd.path {
+            //        if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
+            //            Document::from_prompts().await?.add_to_db(path, &db).await?;
+            //            let docs: Vec<Document> = get_docs(&db).await?;
+            //            println!("Docs:\n{:#?}", docs);
+            //        } else {
+            //            return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
+            //        }
+            //    } else if let Some(path) = cmd.toml {
+            //    }
+            //}
             DocSubCmd::Modify(cmd) => unimplemented!(),
             DocSubCmd::Delete(cmd) => {
                 if let Some(id) = cmd.id {
-                    Document::from_id(id, &db)
-                        .await?
-                        .delete_from_db(&db)
-                        .await?;
-                }
-                if let Some(title) = cmd.title {
-                    match Document::from_title(&title, &db).await {
-                        Ok(doc_opt) => {
-                            if let Some(doc) = doc_opt {
-                                doc.delete_from_db(&db).await?;
-                            }
-                        }
-                        Err(e) => return Err(e),
-                    }
+                    Document::from_id(id, &db).await?.delete(&db).await?;
+                } else if let Some(title) = cmd.title {
+                    Document::delete_from_title(&title, &db).await?;
                 }
                 print_docs(&db).await?;
             }
@@ -84,16 +77,14 @@ async fn main() -> anyhow::Result<()> {
                 print_docs(&db).await?;
             }
             DocSubCmd::Open(cmd) => {
-                let mut doc = Document::default();
-                if let Some(id) = cmd.id {
-                    doc = Document::from_id(id, &db).await?;
-                } else if let Some(mut title) = cmd.title {
-                    title = title.trim().to_lowercase();
-                    doc = Document::from_title(&title, &db)
-                        .await?
-                        .ok_or(anyhow::anyhow!("Title not in DB: {}", title))?;
-                }
-                let path = doc.stored_path().await?;
+                let doc = match cmd {
+                    OpenDoc { id: Some(id), .. } => Document::from_id(id, &db).await?,
+                    OpenDoc {
+                        title: Some(title), ..
+                    } => Document::from_title(&title, &db).await?,
+                    _ => Err(anyhow::anyhow!("Must provide ID or TITLE"))?,
+                };
+                let path = doc.stored_path(&db).await?;
                 std::process::Command::new("xdg-open")
                     .arg(path)
                     .spawn()
@@ -131,16 +122,15 @@ async fn initialize_doc_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryRe
         r#"
         CREATE TABLE IF NOT EXISTS documents
         (
-            id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL UNIQUE,
-            author_firstname TEXT NOT NULL,
-            author_lastname TEXT NOT NULL,
-            year_published INTEGER NOT NULL,
-            publication TEXT NOT NULL,
-            volume INTEGER DEFAULT 0,
-            uuid TEXT NOT NULL,
-            tags TEXT DEFAULT '',
-            doi TEXT DEFAULT ''
+            id          INTEGER PRIMARY KEY,
+            title       TEXT NOT NULL UNIQUE,
+            author      TEXT DEFAULT '',
+            publication TEXT DEFAULT '',
+            volume      INTEGER DEFAULT 0,
+            year        INTEGER DEFAULT 0,
+            uuid        TEXT NOT NULL,
+            tags        TEXT DEFAULT '',
+            doi         TEXT DEFAULT ''
         );
         "#,
     )
@@ -162,8 +152,8 @@ async fn initialize_tag_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryRe
     .await?);
 }
 
-async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<Tag>> {
-    return Ok(sqlx::query_as::<_, Tag>(
+async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<DatabaseTag>> {
+    return Ok(sqlx::query_as::<_, DatabaseTag>(
         r#"
         SELECT *
         FROM tags
@@ -178,8 +168,8 @@ async fn print_tags(pool: &SqlitePool) -> anyhow::Result<()> {
     return Ok(());
 }
 
-async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
-    return Ok(sqlx::query_as::<_, Document>(
+async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<DatabaseDoc>> {
+    return Ok(sqlx::query_as::<_, DatabaseDoc>(
         r#"
         SELECT *
         FROM documents
@@ -190,7 +180,8 @@ async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<Document>> {
 }
 
 async fn print_docs(pool: &SqlitePool) -> anyhow::Result<()> {
-    println!("Documents:\n{}", DocList(get_docs(pool).await?));
+    let sep = "=".repeat(80);
+    println!("{}", sep);
+    println!("Documents:\n{}\n{}{}", sep, DocList(get_docs(pool).await?), sep);
     return Ok(());
 }
-

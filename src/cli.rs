@@ -1,3 +1,4 @@
+use crate::Document;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -19,7 +20,7 @@ pub enum EntityType {
 #[derive(Debug, Args)]
 pub struct TagCmd {
     #[command(subcommand)]
-    pub  command: TagSubCmd,
+    pub command: TagSubCmd,
 }
 
 #[derive(Debug, Subcommand)]
@@ -78,12 +79,32 @@ pub enum DocSubCmd {
 }
 
 #[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
 pub struct AddDoc {
-    #[arg(long)]
-    pub toml: Option<PathBuf>,
-    #[arg(long)]
-    pub path: Option<PathBuf>,
+    #[command(subcommand)]
+    pub source: AddDocSubCmd,
+    //#[arg(long)]
+    //pub toml: Option<PathBuf>,
+    //#[arg(long)]
+    //pub path: Option<Document>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AddDocSubCmd {
+    FromToml(AddDocTomlPath),
+    Single(Document),
+}
+
+#[derive(Debug, Args)]
+pub struct AddDocTomlPath {
+    pub path: PathBuf,
+}
+
+impl std::convert::From<&str> for AddDocTomlPath {
+    fn from(value: &str) -> Self {
+        return Self {
+            path: PathBuf::from(value),
+        };
+    }
 }
 
 #[derive(Debug, Args)]
