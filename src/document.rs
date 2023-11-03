@@ -1,9 +1,9 @@
 use crate::tag::TagInputList;
 use clap::Args;
-use serde::Deserialize;
 use sqlx::{FromRow, SqlitePool};
 use std::path::PathBuf;
 use uuid::Uuid;
+use serde::{Deserializer, Deserialize};
 
 #[derive(FromRow, Debug, Hash)]
 pub struct DatabaseDoc {
@@ -208,28 +208,28 @@ impl std::fmt::Display for DatabaseDoc {
 pub struct Document {
     #[arg(skip)]
     pub id: Option<u32>,
-    #[arg(long, value_parser = crate::cli::input_to_lowercase, required = true)]
-    #[serde(default = "String::new")]
+    #[arg(long, value_parser = Document::input_to_lowercase, required = true)]
+    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
     pub title: String,
-    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new")]
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
     pub author: String,
     #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub year: u16,
-    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new")]
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
     pub publication: String,
     #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub volume: u16,
-    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new")]
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
     pub tags: String,
-    #[arg(long, value_parser = crate::cli::input_to_lowercase, default_value = "")]
+    #[arg(long, default_value = "")]
     #[serde(default = "String::new")]
     pub doi: String,
-    #[arg(long, value_parser = crate::cli::verify_path, required = true)]
+    #[arg(long, value_parser = Document::verify_path, required = true)]
     pub path: PathBuf,
 }
 
@@ -251,6 +251,29 @@ impl std::fmt::Display for Document {
 }
 
 impl Document {
+    pub fn value_to_lowercase<'de, D>(deserializer: D) -> Result<String, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?.to_lowercase();
+        return Ok(value);
+    }
+
+    pub fn input_to_lowercase(value: &str) -> anyhow::Result<String> {
+        return Ok(value.to_lowercase());
+    }
+
+    pub fn verify_path(path: &str) -> anyhow::Result<PathBuf> {
+        let path = PathBuf::from(path);
+        if !path.is_file() || path.extension() != Some(&std::ffi::OsStr::new("pdf")) {
+            return Err(anyhow::anyhow!(
+                "Path does not reference a valid PDF: {:?}",
+                path
+            ))?;
+        }
+        return Ok(path);
+    }
+
     pub fn default_u16() -> u16 {
         return 0;
     }
