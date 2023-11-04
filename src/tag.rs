@@ -51,7 +51,7 @@ impl DatabaseTag {
     pub async fn from_insert(tag: Tag, pool: &SqlitePool) -> anyhow::Result<Self> {
         match Self::from_value(&tag.value, pool).await? {
             Some(dbt) => {
-                println!("Tag already exists: {:?}", dbt);
+                log::warn!("Tag already exists: {:?}", dbt);
                 return Ok(dbt);
             }
             None => {
@@ -144,7 +144,7 @@ impl Tag {
         return match DatabaseTag::from_value(&self.value, pool).await? {
             Some(dbt) => dbt.delete(pool).await,
             None => {
-                println!("Tag not in DB: {:?}", self);
+                log::warn!("Tag not in DB: {:?}", self);
                 return Ok(());
             },
         };
@@ -230,7 +230,7 @@ impl TagInputList {
 
     pub async fn delete_from_db(&self, pool: &SqlitePool) -> anyhow::Result<()> {
         for value in self.0.iter() {
-            println!("Value to be deleted: {:?}", value);
+            log::info!("Value to be deleted: {:?}", value);
             sqlx::query(
                 r#"
             DELETE FROM tags

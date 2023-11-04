@@ -52,7 +52,7 @@ impl DatabaseDoc {
     pub fn is_stored(&self) -> bool {
         let fname = format!("{}.{}", self.uuid, "pdf");
         let path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(fname);
-        return self.uuid.len() == 40 && path.exists();
+        return self.uuid.len() == 36 && path.exists();
     }
 
     pub fn stored_path(&self) -> anyhow::Result<PathBuf> {
@@ -106,7 +106,7 @@ impl DatabaseDoc {
         // If not, create UUID
         let uuid = match Self::from_title(&title, pool).await? {
             Some(dbd) => {
-                println!("Document already in DB: {:?}", title);
+                log::warn!("Document already in DB: {:?}", title);
                 return Ok(dbd);
             }
             None => Uuid::new_v4().to_string(),
@@ -143,7 +143,7 @@ impl DatabaseDoc {
         let stored_path =
             std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(uuid.clone() + ".pdf");
         std::fs::copy(path.clone(), stored_path.clone())?;
-        println!("Document {:?} stored as {:?}", path, stored_path);
+        log::info!("Document {:?} stored as {:?}", path, stored_path);
 
         // Ensure entry properly inserted and document is correctly stored
         return match Self::from_title(&title, pool).await? {
@@ -178,9 +178,9 @@ impl DatabaseDoc {
         let fname = uuid + ".pdf";
         let asset_path = std::path::PathBuf::from(std::env!("DOC_STORE_URL")).join(fname);
         if std::fs::remove_file(asset_path.clone()).is_err() {
-            println!("Could not delete {:?}.", asset_path);
+            log::warn!("Could not delete {:?}.", asset_path);
         } else {
-            println!("Document {:?} deleted.", asset_path);
+            log::info!("Document {:?} deleted.", asset_path);
         };
 
         return Ok(());
@@ -348,81 +348,11 @@ impl Document {
         return match DatabaseDoc::from_title(&self.title, pool).await? {
             Some(dbd) => dbd.delete(pool).await,
             None => {
-                println!("Document not in DB: {:?}", self);
+                log::warn!("Document not in DB: {:?}", self);
                 return Ok(());
             }
         };
     }
-
-    //pub async fn from_prompts() -> anyhow::Result<Self> {
-    //    let print!("\nEnter the author list (delim=';', first/last delim=','): ");
-    //    std::io::stdout().flush()?;
-    //    let mut author = String::new();
-    //    std::io::stdin().read_line(&mut author)?;
-    //    let author_names: Vec<String> = author
-    //        .split(",")
-    //        .take(2)
-    //        .map(|n| n.trim().to_lowercase())
-    //        .collect::<Vec<String>>();
-    //    let [ref last, ref first] = author_names[..2] else {
-    //        Err(anyhow::anyhow!("Bad author input"))?
-    //    };
-
-    //    print!("\nEnter the title: ");
-    //    std::io::stdout().flush()?;
-    //    let mut title = String::new();
-    //    std::io::stdin().read_line(&mut title)?;
-
-    //    print!("\nEnter the name of the publication: ");
-    //    std::io::stdout().flush()?;
-    //    let mut publication = String::new();
-    //    std::io::stdin().read_line(&mut publication)?;
-
-    //    print!("\nEnter the year of publication (YYYY): ");
-    //    std::io::stdout().flush()?;
-    //    let mut year_str = String::new();
-    //    std::io::stdin().read_line(&mut year_str)?;
-    //    let year: u16 = year_str.trim().parse().unwrap_or(0);
-
-    //    print!("\nEnter the publication volume (default = 0): ");
-    //    std::io::stdout().flush()?;
-    //    let mut buf = String::new();
-    //    std::io::stdin().read_line(&mut buf)?;
-    //    let volume: u16 = buf.trim().parse().unwrap_or(0);
-
-    //    print!("\nEnter document tags (e.g. \"rust, programming\"): ");
-    //    std::io::stdout().flush()?;
-    //    let mut buf = String::new();
-    //    std::io::stdin().read_line(&mut buf)?;
-    //    let tags: String = if buf == "" {
-    //        String::new()
-    //    } else {
-    //        TagInputList::from(buf.trim().trim_matches('"'))
-    //            .tag_values()
-    //            .join(",")
-    //    };
-
-    //    let doc = Document {
-    //        title: title.trim().to_lowercase(),
-    //        author_last: last.to_owned(),
-    //        author_first: first.to_owned(),
-    //        publication: publication.trim().to_lowercase(),
-    //        year,
-    //        volume,
-    //        tags,
-    //        ..Default::default()
-    //    };
-
-    //    println!("Document Entry: {:?}", doc);
-    //    print!("Does this look correct ((y)es, (n)o)? ");
-    //    std::io::stdout().flush()?;
-    //    let mut buf = String::new();
-    //    std::io::stdin().read_line(&mut buf)?;
-    //    match buf.trim() {
-    //        "y" | "yes" => return Ok(doc),
-    //        _ => return Err(anyhow::anyhow!("Entry cancelled.")),
-    //    }
-    //}
 }
 
 pub struct DocumentBuilder {

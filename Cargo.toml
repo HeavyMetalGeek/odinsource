@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 clap = { version = "4.4.7", features = ["derive"] }
+env_logger = "0.10.0"
+log = "0.4.20"
 serde = { version = "1.0.190", features = ["derive"] }
 sqlx = { version = "0.7.2", features = ["sqlite", "runtime-tokio"] }
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }

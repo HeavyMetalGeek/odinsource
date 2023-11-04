@@ -15,6 +15,7 @@ const DB_URL: &str = "sqlite://odinsource.db";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let db = setup().await?;
     let args = Cli::parse();
     match args.entity_type {
@@ -55,18 +56,6 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             },
-            //DocSubCmd::Add(cmd) => {
-            //    if let Some(path) = cmd.path {
-            //        if path.is_file() && path.extension() == Some(&std::ffi::OsStr::new("pdf")) {
-            //            Document::from_prompts().await?.add_to_db(path, &db).await?;
-            //            let docs: Vec<Document> = get_docs(&db).await?;
-            //            println!("Docs:\n{:#?}", docs);
-            //        } else {
-            //            return Err(anyhow::anyhow!("Invalid document file: {:?}", path));
-            //        }
-            //    } else if let Some(path) = cmd.toml {
-            //    }
-            //}
             DocSubCmd::Modify(cmd) => unimplemented!(),
             DocSubCmd::Delete(cmd) => {
                 if let Some(id) = cmd.id {
@@ -106,9 +95,9 @@ async fn setup() -> anyhow::Result<SqlitePool> {
     }
     // Ensure the database exists
     if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
-        println!("Creating database {}", DB_URL);
+        log::info!("Creating database {}", DB_URL);
         match Sqlite::create_database(DB_URL).await {
-            Ok(_) => println!("Database creation successful."),
+            Ok(_) => log::info!("Database creation successful."),
             Err(e) => panic!("error: {}", e),
         }
         let db = SqlitePool::connect(DB_URL).await?;
