@@ -128,6 +128,10 @@ impl Tag {
         };
     }
 
+    pub fn input_to_lowercase(value: &str) -> anyhow::Result<String> {
+        return Ok(value.to_lowercase());
+    }
+
     pub async fn from_id(id: u32, pool: &SqlitePool) -> anyhow::Result<Self> {
         return match DatabaseTag::from_id(id, pool).await? {
             Some(dbt) => Ok(dbt.into()),

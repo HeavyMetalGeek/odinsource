@@ -1,4 +1,4 @@
-use crate::Document;
+use crate::{Document, Tag};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -41,12 +41,33 @@ pub struct AddTag {
 }
 
 #[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
 pub struct ModifyTag {
-    #[arg(long)]
+    #[command(subcommand)]
+    pub method: ModifyTagSubCmd,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ModifyTagSubCmd {
+    /// Add one or multiple tags.  Tag lists must be comma separated.
+    ById(ModifyTagById),
+    /// Modify stored tags.  (Unimplemented)
+    ByValue(ModifyTagByValue),
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyTagById {
+    #[arg(long, required = true)]
     pub id: u32,
-    #[arg(long)]
-    pub name: String,
+    #[arg(long, required = true, value_parser = Tag::input_to_lowercase)]
+    pub new_value: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyTagByValue {
+    #[arg(long, required = true)]
+    pub old_value: String,
+    #[arg(long, required = true, value_parser = Tag::input_to_lowercase)]
+    pub new_value: String,
 }
 
 #[derive(Debug, Args)]
@@ -82,15 +103,11 @@ pub enum DocSubCmd {
 pub struct AddDoc {
     #[command(subcommand)]
     pub source: AddDocSubCmd,
-    //#[arg(long)]
-    //pub toml: Option<PathBuf>,
-    //#[arg(long)]
-    //pub path: Option<Document>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum AddDocSubCmd {
-    Single(Document),
+    Single(SingleDoc),
     FromToml(AddDocTomlPath),
 }
 
@@ -108,8 +125,93 @@ impl std::convert::From<&str> for AddDocTomlPath {
 }
 
 #[derive(Debug, Args)]
-pub struct ModifyDoc {
+pub struct SingleDoc {
+    #[arg(long, value_parser = Document::input_to_lowercase, required = true)]
     pub title: String,
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    pub author: String,
+    #[arg(long, default_value = "0")]
+    pub year: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    pub publication: String,
+    #[arg(long, default_value = "0")]
+    pub volume: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
+    pub tags: String,
+    #[arg(long, default_value = "")]
+    pub doi: String,
+    #[arg(long, value_parser = Document::verify_path, required = true)]
+    pub path: PathBuf,
+}
+
+impl std::convert::Into<Document> for SingleDoc {
+    fn into(self) -> Document {
+       return Document {
+           id: None,
+           title: self.title,
+           author: self.author,
+           year: self.year,
+           publication: self.publication,
+           volume: self.volume,
+           tags: self.tags,
+           doi: self.doi,
+           path: self.path,
+       };
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyDoc {
+    #[command(subcommand)]
+    pub method: ModifyDocSubCmd,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ModifyDocSubCmd {
+    ById(ModifyFieldById),
+    ByTitle(ModifyFieldByTitle),
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyFieldById {
+    #[arg(required = true)]
+    pub id: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub title: String,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub author: String,
+    #[arg(long)]
+    pub year: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub publication: String,
+    #[arg(long)]
+    pub volume: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub tags: String,
+    #[arg(long)]
+    pub doi: String,
+    #[arg(long, value_parser = Document::verify_path)]
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct ModifyFieldByTitle {
+    #[arg(long, required = true, value_parser = Document::input_to_lowercase)]
+    pub title: String,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub author: String,
+    #[arg(long)]
+    pub year: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub publication: String,
+    #[arg(long)]
+    pub volume: u16,
+    #[arg(long, value_parser = Document::input_to_lowercase)]
+    pub tags: String,
+    #[arg(long)]
+    pub doi: String,
+    #[arg(long, value_parser = Document::verify_path)]
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Args)]

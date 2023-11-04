@@ -24,7 +24,20 @@ async fn main() -> anyhow::Result<()> {
                 Tag::new(&cmd.name).insert(&db).await?;
                 print_tags(&db).await?;
             }
-            TagSubCmd::Modify(cmd) => unimplemented!(),
+            TagSubCmd::Modify(cmd) => {
+                let tag_values = match cmd.method {
+                    ModifyTagSubCmd::ById(input) => {
+                        (Tag::from_id(input.id, &db).await?.value, input.new_value)
+                    }
+                    ModifyTagSubCmd::ByValue(input) => {
+                        (input.old_value, input.new_value)
+                    }
+                };
+                DocList::get_all(&db)
+                    .await?
+                    .modify_tag(&tag_values.0, &tag_values.1, &db)
+                    .await?;
+            },
             TagSubCmd::Delete(cmd) => {
                 if let Some(name) = cmd.name {
                     Tag::new(&name).delete(&db).await?;
@@ -40,9 +53,10 @@ async fn main() -> anyhow::Result<()> {
         EntityType::Document(cmd) => match cmd.command {
             DocSubCmd::Add(cmd) => match cmd.source {
                 AddDocSubCmd::Single(doc) => {
+                    let doc: Document = doc.into();
                     doc.insert(&db).await?;
                     print_docs(&db).await?;
-                },
+                }
                 AddDocSubCmd::FromToml(toml) => {
                     if toml.path.is_file()
                         && toml.path.extension() == Some(&std::ffi::OsStr::new("toml"))
@@ -174,6 +188,11 @@ async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<DatabaseDoc>> {
 async fn print_docs(pool: &SqlitePool) -> anyhow::Result<()> {
     let sep = "=".repeat(80);
     println!("{}", sep);
-    println!("Documents:\n{}\n{}{}", sep, DocList(get_docs(pool).await?), sep);
+    println!(
+        "Documents:\n{}\n{}{}",
+        sep,
+        DocList(get_docs(pool).await?),
+        sep
+    );
     return Ok(());
 }

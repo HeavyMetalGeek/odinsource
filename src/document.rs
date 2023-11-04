@@ -1,9 +1,10 @@
 use crate::tag::TagInputList;
+use anyhow::Context;
 use clap::Args;
+use serde::{Deserialize, Deserializer};
 use sqlx::{FromRow, SqlitePool};
 use std::path::PathBuf;
 use uuid::Uuid;
-use serde::{Deserializer, Deserialize};
 
 #[derive(FromRow, Debug, Hash)]
 pub struct DatabaseDoc {
@@ -206,30 +207,33 @@ impl std::fmt::Display for DatabaseDoc {
 /// Used for user interface (CLI, toml, etc.)
 #[derive(Debug, Hash, Deserialize, Args)]
 pub struct Document {
-    #[arg(skip)]
     pub id: Option<u32>,
-    #[arg(long, value_parser = Document::input_to_lowercase, required = true)]
-    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
+    #[serde(
+        default = "String::new",
+        deserialize_with = "Document::value_to_lowercase"
+    )]
     pub title: String,
-    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
+    #[serde(
+        default = "String::new",
+        deserialize_with = "Document::value_to_lowercase"
+    )]
     pub author: String,
-    #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub year: u16,
-    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
+    #[serde(
+        default = "String::new",
+        deserialize_with = "Document::value_to_lowercase"
+    )]
     pub publication: String,
-    #[arg(long, default_value = "0")]
     #[serde(default = "Document::default_u16")]
     pub volume: u16,
-    #[arg(long, value_parser = Document::input_to_lowercase, default_value = "")]
-    #[serde(default = "String::new", deserialize_with = "Document::value_to_lowercase")]
+    #[serde(
+        default = "String::new",
+        deserialize_with = "Document::value_to_lowercase"
+    )]
     pub tags: String,
-    #[arg(long, default_value = "")]
     #[serde(default = "String::new")]
     pub doi: String,
-    #[arg(long, value_parser = Document::verify_path, required = true)]
     pub path: PathBuf,
 }
 
@@ -252,8 +256,8 @@ impl std::fmt::Display for Document {
 
 impl Document {
     pub fn value_to_lowercase<'de, D>(deserializer: D) -> Result<String, D::Error>
-        where
-            D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?.to_lowercase();
         return Ok(value);
@@ -367,7 +371,7 @@ pub struct DocumentBuilder {
 }
 
 impl DocumentBuilder {
-    fn new(title: &str, path: &str) -> Self {
+    pub fn new(title: &str, path: &str) -> Self {
         return Self {
             title: title.to_lowercase(),
             author: String::new(),
@@ -380,194 +384,114 @@ impl DocumentBuilder {
         };
     }
 
-    fn author(self, author: &str) -> Self {
-        let DocumentBuilder {
-            title,
-            publication,
-            volume,
-            year,
-            tags,
-            path,
-            doi,
-            ..
-        } = self;
+    pub fn author(self, author: &str) -> Self {
         return Self {
-            title,
+            title: self.title,
             author: author.to_lowercase(),
-            year,
-            publication,
-            volume,
-            tags,
-            doi,
-            path,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
         };
     }
 
-    fn publication(self, publication: &str) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            volume,
-            year,
-            tags,
-            path,
-            doi,
-            ..
-        } = self;
+    pub fn publication(self, publication: &str) -> Self {
         return Self {
-            title,
-            author,
-            year,
+            title: self.title,
+            author: self.author,
+            year: self.year,
             publication: publication.to_lowercase(),
-            volume,
-            tags,
-            doi,
-            path,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
         };
     }
 
-    fn volume(self, volume: u16) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            publication,
-            year,
-            tags,
-            path,
-            doi,
-            ..
-        } = self;
+    pub fn volume(self, volume: u16) -> Self {
         return Self {
-            title,
-            author,
-            year,
-            publication,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
             volume,
-            tags,
-            doi,
-            path,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
         };
     }
 
-    fn year(self, year: u16) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            publication,
-            volume,
-            tags,
-            path,
-            doi,
-            ..
-        } = self;
+    pub fn year(self, year: u16) -> Self {
         return Self {
-            title,
-            author,
+            title: self.title,
+            author: self.author,
             year,
-            publication,
-            volume,
-            tags,
-            doi,
-            path,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
         };
     }
 
-    fn tags(self, tags: &str) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            path,
-            doi,
-            ..
-        } = self;
+    pub fn tags(self, tags: &str) -> Self {
         return Self {
-            title,
-            author,
-            year,
-            publication,
-            volume,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
             tags: tags.to_lowercase(),
-            doi,
-            path,
+            doi: self.doi,
+            path: self.path,
         };
     }
 
-    fn doi(self, doi: &str) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            path,
-            ..
-        } = self;
+    pub fn doi(self, doi: &str) -> Self {
         return Self {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            doi: doi.to_lowercase(),
-            path,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: doi.to_string(),
+            path: self.path,
         };
     }
 
-    fn path(self, path: &str) -> Self {
-        let DocumentBuilder {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            doi,
-            ..
-        } = self;
+    pub fn path(self, path: &str) -> Self {
         return Self {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            doi,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
             path: PathBuf::from(path),
         };
     }
 
-    fn build(self) -> anyhow::Result<Document> {
-        let DocumentBuilder {
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            doi,
-            path,
-        } = self;
-        if !path.is_file() || path.extension() != Some(&std::ffi::OsStr::new("pdf")) {
+    pub fn build(self) -> anyhow::Result<Document> {
+        if !self.path.is_file() || self.path.extension() != Some(&std::ffi::OsStr::new("pdf")) {
             return Err(anyhow::anyhow!(
                 "Path does not reference a valid PDF: {:?}",
-                path
+                self.path
             ))?;
         }
         return Ok(Document {
             id: None,
-            title,
-            author,
-            year,
-            publication,
-            volume,
-            tags,
-            doi,
-            path,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
         });
     }
 }
@@ -601,5 +525,67 @@ impl std::ops::Deref for DocList {
     type Target = Vec<DatabaseDoc>;
     fn deref(&self) -> &Self::Target {
         return &self.0;
+    }
+}
+
+impl DocList {
+    pub async fn get_all(pool: &SqlitePool) -> anyhow::Result<Self> {
+        return Ok(Self(
+            sqlx::query_as::<_, DatabaseDoc>(r#" SELECT * FROM documents "#)
+                .fetch_all(pool)
+                .await?,
+        ));
+    }
+    pub async fn modify_tag(
+        mut self,
+        old_tag: &str,
+        new_tag: &str,
+        pool: &SqlitePool,
+    ) -> anyhow::Result<()> {
+        for doc in self.0.iter_mut() {
+            let mut updated = Vec::new();
+            doc.tags = doc
+                .tags
+                .split(',')
+                .map(|t| {
+                    let tag = t.trim();
+                    if t.trim() == old_tag {
+                        updated.push((old_tag, new_tag));
+                        return new_tag;
+                    } else {
+                        return tag;
+                    }
+                })
+                .collect::<Vec<&str>>()
+                .join(",");
+            if updated.len() > 0 {
+                sqlx::query(
+                    r#"
+                    UPDATE documents
+                    SET tags = ?2
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(doc.id)
+                .bind(&doc.tags)
+                .execute(pool)
+                .await.context("modify doc tags")?;
+                // update tags db
+                for (old, new) in updated.into_iter() {
+                    sqlx::query(
+                        r#"
+                    UPDATE tags
+                    SET value = ?2
+                    WHERE value = ?1
+                    "#,
+                    )
+                    .bind(old)
+                    .bind(new)
+                    .execute(pool)
+                    .await.context("modify tags")?;
+                }
+            }
+        }
+        return Ok(());
     }
 }
