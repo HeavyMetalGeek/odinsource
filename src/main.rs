@@ -70,7 +70,14 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             },
-            DocSubCmd::Modify(cmd) => unimplemented!(),
+            DocSubCmd::Modify(cmd) => match cmd.method {
+                ModifyDocSubCmd::ById(input) => {
+                    input.update_doc(&db).await?;
+                }
+                ModifyDocSubCmd::ByTitle(input) => {
+                    input.update_doc(&db).await?;
+                }
+            },
             DocSubCmd::Delete(cmd) => {
                 if let Some(id) = cmd.id {
                     Document::from_id(id, &db).await?.delete(&db).await?;

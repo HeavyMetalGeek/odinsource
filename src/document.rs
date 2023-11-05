@@ -186,6 +186,36 @@ impl DatabaseDoc {
 
         return Ok(());
     }
+
+    pub async fn update(self, pool: &SqlitePool) -> anyhow::Result<()> {
+        // Delete entry from database
+        sqlx::query(
+            r#"
+            UPDATE documents
+            SET
+                title = ?2,
+                author = ?3,
+                year = ?4,
+                publication = ?5,
+                volume = ?6,
+                tags = ?7,
+                doi = ?8
+            WHERE id=?1
+            "#,
+        )
+        .bind(&self.id)
+        .bind(&self.title)
+        .bind(&self.author)
+        .bind(&self.year)
+        .bind(&self.publication)
+        .bind(&self.volume)
+        .bind(&self.tags)
+        .bind(&self.doi)
+        .execute(pool)
+        .await?;
+        log::debug!("Document sucessfully updated:\n{}", self);
+        return Ok(());
+    }
 }
 
 impl std::fmt::Display for DatabaseDoc {

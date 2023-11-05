@@ -1,4 +1,4 @@
-use crate::{Document, Tag};
+use crate::{Document, Tag, document::DatabaseDoc};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -175,23 +175,56 @@ pub enum ModifyDocSubCmd {
 #[derive(Debug, Args)]
 pub struct ModifyFieldById {
     #[arg(required = true)]
-    pub id: u16,
+    pub id: u32,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub title: String,
+    pub title: Option<String>,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub author: String,
+    pub author: Option<String>,
     #[arg(long)]
-    pub year: u16,
+    pub year: Option<u16>,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub publication: String,
+    pub publication: Option<String>,
     #[arg(long)]
-    pub volume: u16,
+    pub volume: Option<u16>,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub tags: String,
+    pub tags: Option<String>,
     #[arg(long)]
-    pub doi: String,
-    #[arg(long, value_parser = Document::verify_path)]
-    pub path: PathBuf,
+    pub doi: Option<String>,
+}
+
+impl ModifyFieldById {
+    pub async fn update_doc(self, pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+        let mut doc = match DatabaseDoc::from_id(self.id, &pool).await? {
+            Some(doc) => doc,
+            None => {
+                log::error!("Invalid ID: not found in database");
+                return Err(anyhow::anyhow!("No document with ID: {}", self.id));
+            }
+        };
+        if let Some(title) = self.title {
+            doc.title = title;
+        }
+        if let Some(author) = self.author {
+            doc.author = author;
+        }
+        if let Some(year) = self.year {
+            doc.year = year;
+        }
+        if let Some(publication) = self.publication {
+            doc.publication = publication;
+        }
+        if let Some(volume) = self.volume {
+            doc.volume = volume;
+        }
+        if let Some(tags) = self.tags {
+            log::warn!("Updating tags not implemented yet");
+            //doc.tags = tags;
+        }
+        if let Some(doi) = self.doi {
+            doc.doi = doi;
+        }
+        return doc.update(pool).await;
+    }
 }
 
 #[derive(Debug, Args)]
@@ -199,19 +232,49 @@ pub struct ModifyFieldByTitle {
     #[arg(long, required = true, value_parser = Document::input_to_lowercase)]
     pub title: String,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub author: String,
+    pub author: Option<String>,
     #[arg(long)]
-    pub year: u16,
+    pub year: Option<u16>,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub publication: String,
+    pub publication: Option<String>,
     #[arg(long)]
-    pub volume: u16,
+    pub volume: Option<u16>,
     #[arg(long, value_parser = Document::input_to_lowercase)]
-    pub tags: String,
+    pub tags: Option<String>,
     #[arg(long)]
-    pub doi: String,
-    #[arg(long, value_parser = Document::verify_path)]
-    pub path: PathBuf,
+    pub doi: Option<String>,
+}
+
+impl ModifyFieldByTitle {
+    pub async fn update_doc(self, pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+        let mut doc = match DatabaseDoc::from_title(&self.title, &pool).await? {
+            Some(doc) => doc,
+            None => {
+                log::error!("No document found with title: {}", self.title);
+                return Err(anyhow::anyhow!("No document found with title: {}", self.title));
+            }
+        };
+        if let Some(author) = self.author {
+            doc.author = author;
+        }
+        if let Some(year) = self.year {
+            doc.year = year;
+        }
+        if let Some(publication) = self.publication {
+            doc.publication = publication;
+        }
+        if let Some(volume) = self.volume {
+            doc.volume = volume;
+        }
+        if let Some(tags) = self.tags {
+            log::warn!("Updating tags not implemented yet");
+            //doc.tags = tags;
+        }
+        if let Some(doi) = self.doi {
+            doc.doi = doi;
+        }
+        return doc.update(pool).await;
+    }
 }
 
 #[derive(Debug, Args)]
