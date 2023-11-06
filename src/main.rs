@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     match args.entity_type {
         EntityType::Tag(cmd) => match cmd.command {
             TagSubCmd::Add(cmd) => {
-                Tag::new(&cmd.name).insert(&db).await?;
+                Tag::new(&cmd.value).insert(&db).await?;
                 print_tags(&db).await?;
             }
             TagSubCmd::Modify(cmd) => {
@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
                     .await?;
             },
             TagSubCmd::Delete(cmd) => {
-                if let Some(name) = cmd.name {
+                if let Some(name) = cmd.value {
                     Tag::new(&name).delete(&db).await?;
                 } else if let Some(id) = cmd.id {
                     Tag::from_id(id, &db).await?.delete(&db).await?;

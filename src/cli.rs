@@ -1,4 +1,8 @@
-use crate::{Document, Tag, document::DatabaseDoc};
+use crate::{
+    document::DatabaseDoc,
+    tag::{DatabaseTag, TagInputList, TagList},
+    Document, Tag,
+};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -10,15 +14,16 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum EntityType {
-    /// Operations for document tags
+    /// Operations for document tag records.
     Tag(TagCmd),
     #[command(name = "doc")]
-    /// Operations for documents
+    /// Operations for document records.
     Document(DocCmd),
 }
 
 #[derive(Debug, Args)]
 pub struct TagCmd {
+    /// Operation to execute on document tag records.
     #[command(subcommand)]
     pub command: TagSubCmd,
 }
@@ -27,45 +32,51 @@ pub struct TagCmd {
 pub enum TagSubCmd {
     /// Add one or multiple tags.  Tag lists must be comma separated.
     Add(AddTag),
-    /// Modify stored tags.  (Unimplemented)
+    /// Modify a tag record.
     Modify(ModifyTag),
-    /// Delete stored tags.
+    /// Delete a tag record.
     Delete(DeleteTag),
-    /// List stored tags.
+    /// List all tag records.
     List,
 }
 
 #[derive(Debug, Args)]
 pub struct AddTag {
-    pub name: String,
+    /// Tag value to add to the tags database.
+    pub value: String,
 }
 
 #[derive(Debug, Args)]
 pub struct ModifyTag {
+    /// Method for identifying which tag record to modify.
     #[command(subcommand)]
     pub method: ModifyTagSubCmd,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ModifyTagSubCmd {
-    /// Add one or multiple tags.  Tag lists must be comma separated.
+    /// Identify the tag record to be modified by its ID.
     ById(ModifyTagById),
-    /// Modify stored tags.  (Unimplemented)
+    /// Identify the tag record to be modified by its value.
     ByValue(ModifyTagByValue),
 }
 
 #[derive(Debug, Args)]
 pub struct ModifyTagById {
+    /// Tag database record ID.
     #[arg(long, required = true)]
     pub id: u32,
+    /// Updated value.  Also updates in all documents containing the tag.
     #[arg(long, required = true, value_parser = Tag::input_to_lowercase)]
     pub new_value: String,
 }
 
 #[derive(Debug, Args)]
 pub struct ModifyTagByValue {
+    /// Tag record value currently in database.
     #[arg(long, required = true)]
     pub old_value: String,
+    /// Updated tag record value in tags database.  Also updates in all document records containing the tag.
     #[arg(long, required = true, value_parser = Tag::input_to_lowercase)]
     pub new_value: String,
 }
@@ -73,27 +84,30 @@ pub struct ModifyTagByValue {
 #[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
 pub struct DeleteTag {
+    /// ID of tag record in database.
     #[arg(long)]
     pub id: Option<u32>,
+    /// Value of tag record in database.
     #[arg(long)]
-    pub name: Option<String>,
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub struct DocCmd {
+    /// Operation to execute on document records.
     #[command(subcommand)]
     pub command: DocSubCmd,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum DocSubCmd {
-    /// Add one or multiple documents.  Multiple documents must be added via toml file.
+    /// Add one or multiple document records.  Multiple records must be added via TOML file.
     Add(AddDoc),
     /// Modify stored document information.
     Modify(ModifyDoc),
-    /// Delete stored documents.
+    /// Delete a document record.  Also deletes the reference copy of the PDF.
     Delete(DeleteDoc),
-    /// List stored documents.
+    /// List all document records.
     List,
     /// Open a stored document by id or title.
     Open(OpenDoc),
@@ -101,18 +115,22 @@ pub enum DocSubCmd {
 
 #[derive(Debug, Args)]
 pub struct AddDoc {
+    /// Method for adding document records.
     #[command(subcommand)]
     pub source: AddDocSubCmd,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum AddDocSubCmd {
+    /// Add a single document by entering field values through CLI options.
     Single(SingleDoc),
+    /// Add one or multiple documents from specifications in a TOML document.
     FromToml(AddDocTomlPath),
 }
 
 #[derive(Debug, Args)]
 pub struct AddDocTomlPath {
+    /// Location of the TOML file to be parsed for document record information.
     pub path: PathBuf,
 }
 
@@ -146,29 +164,32 @@ pub struct SingleDoc {
 
 impl std::convert::Into<Document> for SingleDoc {
     fn into(self) -> Document {
-       return Document {
-           id: None,
-           title: self.title,
-           author: self.author,
-           year: self.year,
-           publication: self.publication,
-           volume: self.volume,
-           tags: self.tags,
-           doi: self.doi,
-           path: self.path,
-       };
+        return Document {
+            id: None,
+            title: self.title,
+            author: self.author,
+            year: self.year,
+            publication: self.publication,
+            volume: self.volume,
+            tags: self.tags,
+            doi: self.doi,
+            path: self.path,
+        };
     }
 }
 
 #[derive(Debug, Args)]
 pub struct ModifyDoc {
+    /// Method for identifying which document record to modify.
     #[command(subcommand)]
     pub method: ModifyDocSubCmd,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ModifyDocSubCmd {
+    /// Specify which document record to modify by its ID.
     ById(ModifyFieldById),
+    /// Specify which document record to modify by its title.
     ByTitle(ModifyFieldByTitle),
 }
 
@@ -217,8 +238,18 @@ impl ModifyFieldById {
             doc.volume = volume;
         }
         if let Some(tags) = self.tags {
-            log::warn!("Updating tags not implemented yet");
-            //doc.tags = tags;
+            let input_tags = TagInputList::from(tags.as_str());
+            let db_tags = TagList::get_all(&pool).await?;
+            for itag in input_tags.0.into_iter() {
+                if db_tags.0.iter().find(|dbt| dbt.value == itag).is_none() {
+                    log::info!("Adding tag to DB: {}", itag);
+                    let new_tag = Tag::new(&itag);
+                    DatabaseTag::from_insert(new_tag, pool).await?;
+                } else {
+                    log::debug!("Tag already exists in DB: {}", itag);
+                }
+            }
+            doc.tags = tags;
         }
         if let Some(doi) = self.doi {
             doc.doi = doi;
@@ -251,7 +282,10 @@ impl ModifyFieldByTitle {
             Some(doc) => doc,
             None => {
                 log::error!("No document found with title: {}", self.title);
-                return Err(anyhow::anyhow!("No document found with title: {}", self.title));
+                return Err(anyhow::anyhow!(
+                    "No document found with title: {}",
+                    self.title
+                ));
             }
         };
         if let Some(author) = self.author {
@@ -267,8 +301,18 @@ impl ModifyFieldByTitle {
             doc.volume = volume;
         }
         if let Some(tags) = self.tags {
-            log::warn!("Updating tags not implemented yet");
-            //doc.tags = tags;
+            let input_tags = TagInputList::from(tags.as_str());
+            let db_tags = TagList::get_all(&pool).await?;
+            for itag in input_tags.0.into_iter() {
+                if db_tags.0.iter().find(|dbt| dbt.value == itag).is_none() {
+                    log::info!("Adding tag to DB: {}", itag);
+                    let new_tag = Tag::new(&itag);
+                    DatabaseTag::from_insert(new_tag, pool).await?;
+                } else {
+                    log::debug!("Tag already exists in DB: {}", itag);
+                }
+            }
+            doc.tags = tags;
         }
         if let Some(doi) = self.doi {
             doc.doi = doi;
@@ -280,8 +324,10 @@ impl ModifyFieldByTitle {
 #[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
 pub struct DeleteDoc {
+    /// ID of the document record to be deleted.
     #[arg(long)]
     pub id: Option<u32>,
+    /// Title of the document record to be deleted.
     #[arg(long)]
     pub title: Option<String>,
 }
@@ -289,8 +335,10 @@ pub struct DeleteDoc {
 #[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
 pub struct OpenDoc {
+    /// ID of the document record to open.
     #[arg(long)]
     pub id: Option<u32>,
+    /// Title of the document record to open.
     #[arg(long)]
     pub title: Option<String>,
 }

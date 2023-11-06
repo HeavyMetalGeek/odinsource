@@ -19,7 +19,7 @@ impl std::convert::Into<Tag> for DatabaseTag {
 }
 impl std::fmt::Display for DatabaseTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            return write!(f, "id {}: {}", self.id, self.value);
+        return write!(f, "id {}: {}", self.id, self.value);
     }
 }
 
@@ -150,7 +150,7 @@ impl Tag {
             None => {
                 log::warn!("Tag not in DB: {:?}", self);
                 return Ok(());
-            },
+            }
         };
     }
 }
@@ -182,8 +182,25 @@ impl std::ops::Deref for TagList {
     }
 }
 
+impl TagList {
+    pub async fn get_all(pool: &SqlitePool) -> anyhow::Result<Self> {
+        return Ok(Self(
+            sqlx::query_as::<_, DatabaseTag>(r#"SELECT * FROM tags"#)
+                .fetch_all(pool)
+                .await?,
+        ));
+    }
+    pub async fn get_all_title_sorted(pool: &SqlitePool) -> anyhow::Result<Self> {
+        return Ok(Self(
+            sqlx::query_as::<_, DatabaseTag>(r#"SELECT * FROM tags ORDER BY title ASC"#)
+                .fetch_all(pool)
+                .await?,
+        ));
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct TagInputList(Vec<String>);
+pub struct TagInputList(pub Vec<String>);
 
 impl Default for TagInputList {
     fn default() -> Self {
