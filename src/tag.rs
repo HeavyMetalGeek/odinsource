@@ -1,5 +1,7 @@
 use sqlx::{FromRow, SqlitePool};
 
+use crate::document::DocList;
+
 /// A tag struct for representing query results.
 /// Guaranteed to be complete and represent a valid row
 #[derive(FromRow, Debug)]
@@ -85,6 +87,12 @@ impl DatabaseTag {
         .bind(&self.value)
         .execute(pool)
         .await?;
+
+        // Remove tag from documents
+        DocList::from_tag(&self.value, pool)
+            .await?
+            .delete_tag(&self.value, pool)
+            .await?;
         return Ok(());
     }
 

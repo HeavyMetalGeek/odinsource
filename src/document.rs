@@ -187,7 +187,7 @@ impl DatabaseDoc {
         return Ok(());
     }
 
-    pub async fn update(self, pool: &SqlitePool) -> anyhow::Result<()> {
+    pub async fn update(&self, pool: &SqlitePool) -> anyhow::Result<()> {
         // Delete entry from database
         sqlx::query(
             r#"
@@ -600,7 +600,8 @@ impl DocList {
                 .bind(doc.id)
                 .bind(&doc.tags)
                 .execute(pool)
-                .await.context("modify doc tags")?;
+                .await
+                .context("modify doc tags")?;
                 // update tags db
                 for (old, new) in updated.into_iter() {
                     sqlx::query(
@@ -613,9 +614,24 @@ impl DocList {
                     .bind(old)
                     .bind(new)
                     .execute(pool)
-                    .await.context("modify tags")?;
+                    .await
+                    .context("modify tags")?;
                 }
             }
+        }
+        return Ok(());
+    }
+
+    pub async fn delete_tag(mut self, tag: &str, pool: &SqlitePool) -> anyhow::Result<()> {
+        for doc in self.0.iter_mut() {
+            doc.tags = doc
+                .tags
+                .split(',')
+                .map(|v| v.trim().to_string())
+                .filter(|s| *s != tag)
+                .collect::<Vec<_>>()
+                .join(",");
+            doc.update(pool).await?;
         }
         return Ok(());
     }
