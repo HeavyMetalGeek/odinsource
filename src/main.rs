@@ -86,8 +86,14 @@ async fn main() -> anyhow::Result<()> {
                 }
                 print_docs(&db).await?;
             }
-            DocSubCmd::List => {
-                print_docs(&db).await?;
+            DocSubCmd::List(cmd) => {
+                if let Some(value) = cmd.tag {
+                    log::debug!("Search tag: {}", value);
+                    let doc_list = DocList::from_tag(&value, &db).await?;
+                    print_doc_list(doc_list).await?;
+                } else {
+                    print_docs(&db).await?;
+                };
             }
             DocSubCmd::Open(cmd) => {
                 let doc = match cmd {
@@ -199,6 +205,18 @@ async fn print_docs(pool: &SqlitePool) -> anyhow::Result<()> {
         "Documents:\n{}\n{}{}",
         sep,
         DocList(get_docs(pool).await?),
+        sep
+    );
+    return Ok(());
+}
+
+async fn print_doc_list(doc_list: DocList) -> anyhow::Result<()> {
+    let sep = "=".repeat(80);
+    println!("{}", sep);
+    println!(
+        "Documents:\n{}\n{}{}",
+        sep,
+        doc_list,
         sep
     );
     return Ok(());

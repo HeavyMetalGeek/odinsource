@@ -108,7 +108,7 @@ pub enum DocSubCmd {
     /// Delete a document record.  Also deletes the reference copy of the PDF.
     Delete(DeleteDoc),
     /// List all document records.
-    List,
+    List(ListDoc),
     /// Open a stored document by id or title.
     Open(OpenDoc),
 }
@@ -240,8 +240,8 @@ impl ModifyFieldById {
         if let Some(tags) = self.tags {
             let input_tags = TagInputList::from(tags.as_str());
             let db_tags = TagList::get_all(&pool).await?;
-            for itag in input_tags.0.into_iter() {
-                if db_tags.0.iter().find(|dbt| dbt.value == itag).is_none() {
+            for itag in input_tags.0.iter() {
+                if db_tags.0.iter().find(|dbt| dbt.value == *itag).is_none() {
                     log::info!("Adding tag to DB: {}", itag);
                     let new_tag = Tag::new(&itag);
                     DatabaseTag::from_insert(new_tag, pool).await?;
@@ -249,7 +249,7 @@ impl ModifyFieldById {
                     log::debug!("Tag already exists in DB: {}", itag);
                 }
             }
-            doc.tags = tags;
+            doc.tags = input_tags.tag_values().clone().join(",");
         }
         if let Some(doi) = self.doi {
             doc.doi = doi;
@@ -341,4 +341,11 @@ pub struct OpenDoc {
     /// Title of the document record to open.
     #[arg(long)]
     pub title: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ListDoc {
+    /// List document records containing this tag.
+    #[arg(long)]
+    pub tag: Option<String>,
 }

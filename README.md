@@ -26,7 +26,7 @@ This would have been especially handy for citations.
 - [x] Modify document records (individual or multiple fields)
 - [ ] Open document by ID or title
     - [x] Using `xdg-open`
-- [ ] Query document records by tag(s)
+- [x] Query document records by tag(s)
 - [ ] Configuration option for changing which program to use for opening documents
 - [ ] Dialogs for preventing inadvertant accumulation of tags
 - [ ] Export document records as bibtex (or other citation formats)

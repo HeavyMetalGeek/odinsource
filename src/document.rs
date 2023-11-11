@@ -566,6 +566,7 @@ impl DocList {
                 .await?,
         ));
     }
+
     pub async fn modify_tag(
         mut self,
         old_tag: &str,
@@ -617,5 +618,20 @@ impl DocList {
             }
         }
         return Ok(());
+    }
+
+    pub async fn from_tag(title: &str, pool: &SqlitePool) -> anyhow::Result<Self> {
+        let tag = "%".to_string() + title + "%";
+        let docs = sqlx::query_as::<_, DatabaseDoc>(
+            r#"
+            SELECT * FROM documents
+            WHERE tags LIKE ?1
+            "#,
+        )
+        .bind(&tag)
+        .fetch_all(pool)
+        .await?;
+
+        return Ok(Self(docs));
     }
 }
