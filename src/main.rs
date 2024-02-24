@@ -1,17 +1,17 @@
 pub mod cli;
 pub mod document;
 pub mod tag;
+pub mod api;
 
 use cli::*;
 use document::*;
 use tag::*;
+use api::*;
 
 //use serde::Deserialize;
 use clap::Parser;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Sqlite, SqlitePool};
 use std::convert::From;
-
-const DB_URL: &str = "sqlite://odinsource.db";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -111,113 +111,5 @@ async fn main() -> anyhow::Result<()> {
             }
         },
     }
-    return Ok(());
-}
-
-async fn setup() -> anyhow::Result<SqlitePool> {
-    // Ensure the document storage directory exists
-    let doc_store_url = std::path::PathBuf::from(std::env!("DOC_STORE_URL"));
-    if !doc_store_url.exists() {
-        std::fs::create_dir(doc_store_url)?;
-    }
-    // Ensure the database exists
-    if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
-        log::info!("Creating database {}", DB_URL);
-        match Sqlite::create_database(DB_URL).await {
-            Ok(_) => log::info!("Database creation successful."),
-            Err(e) => panic!("error: {}", e),
-        }
-        let db = SqlitePool::connect(DB_URL).await?;
-        let _doc_table_result = initialize_doc_table(&db).await?;
-        let _tag_table_result = initialize_tag_table(&db).await?;
-        return Ok(db);
-    } else {
-        return Ok(SqlitePool::connect(DB_URL).await?);
-    };
-}
-
-async fn initialize_doc_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryResult> {
-    return Ok(sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS documents
-        (
-            id          INTEGER PRIMARY KEY,
-            title       TEXT NOT NULL UNIQUE,
-            author      TEXT DEFAULT '',
-            publication TEXT DEFAULT '',
-            volume      INTEGER DEFAULT 0,
-            year        INTEGER DEFAULT 0,
-            uuid        TEXT NOT NULL,
-            tags        TEXT DEFAULT '',
-            doi         TEXT DEFAULT ''
-        );
-        "#,
-    )
-    .execute(pool)
-    .await?);
-}
-
-async fn initialize_tag_table(pool: &SqlitePool) -> anyhow::Result<SqliteQueryResult> {
-    return Ok(sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS tags
-        (
-            id INTEGER PRIMARY KEY,
-            value TEXT NOT NULL UNIQUE
-        );
-        "#,
-    )
-    .execute(pool)
-    .await?);
-}
-
-async fn get_tags(pool: &SqlitePool) -> anyhow::Result<Vec<DatabaseTag>> {
-    return Ok(sqlx::query_as::<_, DatabaseTag>(
-        r#"
-        SELECT *
-        FROM tags
-        "#,
-    )
-    .fetch_all(pool)
-    .await?);
-}
-
-async fn print_tags(pool: &SqlitePool) -> anyhow::Result<()> {
-    println!("Tags:\n{}", TagList(get_tags(pool).await?));
-    return Ok(());
-}
-
-async fn get_docs(pool: &SqlitePool) -> anyhow::Result<Vec<DatabaseDoc>> {
-    return Ok(sqlx::query_as::<_, DatabaseDoc>(
-        r#"
-        SELECT *
-        FROM documents
-        "#,
-    )
-    .fetch_all(pool)
-    .await?);
-}
-
-async fn print_docs(pool: &SqlitePool) -> anyhow::Result<()> {
-    let sep = "=".repeat(80);
-    println!("{}", sep);
-    println!(
-        "Documents:\n{}\n{}{}",
-        sep,
-        DocList(get_docs(pool).await?),
-        sep
-    );
-    return Ok(());
-}
-
-async fn print_doc_list(doc_list: DocList) -> anyhow::Result<()> {
-    let sep = "=".repeat(80);
-    println!("{}", sep);
-    println!(
-        "Documents:\n{}\n{}{}",
-        sep,
-        doc_list,
-        sep
-    );
     return Ok(());
 }
